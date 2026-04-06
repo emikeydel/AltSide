@@ -27,7 +27,7 @@ struct WelcomeView: View {
                 Spacer().frame(height: 32)
 
                 // Description
-                Text("AltSide tracks NYC alternate side parking schedules so you know exactly when street cleaning hits your block — and reminds you before the sweeper arrives.")
+                Text("AltSide tracks NYC alternate side parking schedules so you know exactly when street cleaning hits your block – and alerts you before the sweeper arrives or when rules are suspended.")
                     .font(.system(size: 16))
                     .foregroundStyle(Color.uberGray2)
                     .lineSpacing(4)
