@@ -14,11 +14,7 @@ struct ReminderSetupView: View {
             Color.uberBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Drag handle
-                Capsule()
-                    .fill(Color.uberGray3.opacity(0.5))
-                    .frame(width: 36, height: 4)
-                    .padding(.top, 12)
+                CardHeader()
 
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
@@ -44,7 +40,7 @@ struct ReminderSetupView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                                .strokeBorder(Color.uberBorder, lineWidth: 1)
                         )
 
                         // CTAs
@@ -61,6 +57,8 @@ struct ReminderSetupView: View {
                                 .padding(.vertical, 12)
                         }
 
+                        TipJarButton()
+
                         Spacer().frame(height: 20)
                     }
                     .padding(.horizontal, 20)
@@ -69,6 +67,10 @@ struct ReminderSetupView: View {
             }
         }
         .onAppear { config = spot.reminderConfig }
+        .sensoryFeedback(.selection, trigger: config.beforeCleaningEnabled)
+        .sensoryFeedback(.selection, trigger: config.eveningBeforeEnabled)
+        .sensoryFeedback(.selection, trigger: config.morningOfEnabled)
+        .sensoryFeedback(.selection, trigger: config.beforeCleaningMinutes)
     }
 
     // MARK: - Spot Summary Bar
@@ -87,7 +89,8 @@ struct ReminderSetupView: View {
                     .foregroundStyle(Color.uberWhite)
                 if let side = spot.streetSide {
                     HStack(spacing: 4) {
-                        Text(side.displayName + " side")
+                        let rel = side.relativeLabel(facing: spot.parkingHeading)
+                        Text(rel.map { "\($0) side (\(side.displayName))" } ?? "\(side.displayName) side")
                         if spot.nextCleaningDate != nil {
                             Text("·")
                             Text(spot.moveByDisplay)
@@ -179,7 +182,7 @@ struct ReminderSetupView: View {
 
     private var divider: some View {
         Divider()
-            .background(Color.white.opacity(0.08))
+            .background(Color.uberBorder)
             .padding(.horizontal, 16)
     }
 }

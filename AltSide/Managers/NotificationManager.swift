@@ -2,14 +2,24 @@ import UserNotifications
 import Foundation
 import Observation
 
+// Actions the app needs to perform in response to a notification tap.
+enum ParkingNotificationAction: Equatable {
+    case clearSpot(UUID)
+    case navigateTo(UUID)
+}
+
 @Observable
-final class NotificationManager {
+final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     var authorizationStatus: UNAuthorizationStatus = .notDetermined
+    /// Set by the delegate when the user taps an action. Observed by MainMapView.
+    var pendingAction: ParkingNotificationAction? = nil
 
     private let center = UNUserNotificationCenter.current()
     static let categoryIdentifier = "PARKING_ALERT"
 
-    init() {
+    override init() {
+        super.init()
+        center.delegate = self
         registerCategories()
         Task { await refreshStatus() }
     }
@@ -47,7 +57,8 @@ final class NotificationManager {
             if fireDate > Date() {
                 let content = makeContent(
                     title: "Move your car — cleaning in \(config.beforeCleaningMinutes) min",
-                    body: "\(spot.streetName) · \(spot.streetSide?.displayName ?? "") side · \(spot.moveByDisplay)"
+                    body: "\(spot.streetName) · \(spot.streetSide?.displayName ?? "") side · \(spot.moveByDisplay)",
+                    spotID: spot.id
                 )
                 requests.append(makeRequest(id: "\(spot.id)_before", content: content, date: fireDate))
             }
@@ -58,7 +69,8 @@ final class NotificationManager {
             if let eve = eveningBefore(cleaningDate, hour: config.eveningBeforeHour, minute: config.eveningBeforeMinute) {
                 let content = makeContent(
                     title: "Street cleaning tomorrow 🧹",
-                    body: "\(spot.streetName) · \(spot.streetSide?.displayName ?? "") side · \(spot.moveByDisplay)"
+                    body: "\(spot.streetName) · \(spot.streetSide?.displayName ?? "") side · \(spot.moveByDisplay)",
+                    spotID: spot.id
                 )
                 requests.append(makeRequest(id: "\(spot.id)_evening", content: content, date: eve))
             }
@@ -69,7 +81,8 @@ final class NotificationManager {
             if let morning = morningOf(cleaningDate, hour: config.morningOfHour, minute: config.morningOfMinute) {
                 let content = makeContent(
                     title: "Street cleaning today ⚠️",
-                    body: "\(spot.streetName) · \(spot.streetSide?.displayName ?? "") side · \(spot.moveByDisplay)"
+                    body: "\(spot.streetName) · \(spot.streetSide?.displayName ?? "") side · \(spot.moveByDisplay)",
+                    spotID: spot.id
                 )
                 requests.append(makeRequest(id: "\(spot.id)_morning", content: content, date: morning))
             }
@@ -92,14 +105,76 @@ final class NotificationManager {
         center.removePendingNotificationRequests(withIdentifiers: ids)
     }
 
+    // MARK: - UNUserNotificationCenterDelegate
+
+    /// Show banner + play sound even when the app is in the foreground.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .badge])
+    }
+
+    /// Handle action button taps (from lock screen, notification centre, Dynamic Island, etc.)
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        defer { completionHandler() }
+
+        guard
+            let spotIDStr = response.notification.request.content.userInfo["spotID"] as? String,
+            let spotID = UUID(uuidString: spotIDStr)
+        else { return }
+
+        switch response.actionIdentifier {
+
+        case "MOVED_IT":
+            // Cancel remaining alerts and signal the app to clear the spot.
+            Task { await cancelAlerts(for: spotID) }
+            pendingAction = .clearSpot(spotID)
+
+        case "NAVIGATE":
+            // Bring the app to foreground and open Maps navigation.
+            pendingAction = .navigateTo(spotID)
+
+        case "SNOOZE_15":
+            Task { await snooze(response.notification.request) }
+
+        case UNNotificationDefaultActionIdentifier:
+            // User tapped the notification body — just open the app (default behaviour).
+            break
+
+        default:
+            break
+        }
+    }
+
+    // MARK: - Snooze
+
+    private func snooze(_ originalRequest: UNNotificationRequest) async {
+        let snoozed = originalRequest.content.mutableCopy() as! UNMutableNotificationContent
+        snoozed.title = "⏰ \(originalRequest.content.title)"
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 15 * 60, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: originalRequest.identifier + "_snooze",
+            content: snoozed,
+            trigger: trigger
+        )
+        try? await center.add(request)
+    }
+
     // MARK: - Private Helpers
 
-    private func makeContent(title: String, body: String) -> UNMutableNotificationContent {
+    private func makeContent(title: String, body: String, spotID: UUID) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
         content.categoryIdentifier = Self.categoryIdentifier
+        content.userInfo = ["spotID": spotID.uuidString]
         return content
     }
 
@@ -125,24 +200,24 @@ final class NotificationManager {
     }
 
     private func registerCategories() {
+        let movedIt = UNNotificationAction(
+            identifier: "MOVED_IT",
+            title: "I moved it ✓",
+            options: .destructive
+        )
+        let snooze = UNNotificationAction(
+            identifier: "SNOOZE_15",
+            title: "Snooze 15 min",
+            options: []
+        )
         let navigate = UNNotificationAction(
             identifier: "NAVIGATE",
             title: "Navigate to Car",
             options: .foreground
         )
-        let moved = UNNotificationAction(
-            identifier: "ALREADY_MOVED",
-            title: "Already Moved",
-            options: .destructive
-        )
-        let snooze = UNNotificationAction(
-            identifier: "SNOOZE_30",
-            title: "Snooze 30 min",
-            options: []
-        )
         let category = UNNotificationCategory(
             identifier: Self.categoryIdentifier,
-            actions: [navigate, moved, snooze],
+            actions: [movedIt, snooze, navigate],
             intentIdentifiers: [],
             options: []
         )

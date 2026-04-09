@@ -7,7 +7,6 @@ struct ShareSpotView: View {
     let onDone: () -> Void
 
     @State private var showMessageCompose = false
-    @State private var showShareSheet = false
     @State private var showContactPicker = false
     @State private var canSendText = MFMessageComposeViewController.canSendText() || ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != nil
     @State private var selectedName: String?
@@ -23,13 +22,23 @@ struct ShareSpotView: View {
             Color.uberBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
+                // Drag handle
                 Capsule()
-                    .fill(Color.uberGray3.opacity(0.5))
+                    .fill(Color.uberGray3.opacity(0.4))
                     .frame(width: 36, height: 4)
                     .padding(.top, 12)
+                    .padding(.bottom, 4)
 
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
+
+                        // Sweepy
+                        Image("Sweepy")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 140)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 8)
 
                         // Header
                         VStack(alignment: .leading, spacing: 6) {
@@ -37,7 +46,6 @@ struct ShareSpotView: View {
                                 .font(.system(size: 10, weight: .bold))
                                 .tracking(1.5)
                                 .foregroundStyle(Color.uberGray3)
-                                .padding(.top, 20)
                             Text("Let someone know\nwhere you parked")
                                 .font(.system(size: 26, weight: .black))
                                 .tracking(-0.8)
@@ -59,12 +67,7 @@ struct ShareSpotView: View {
                                     action: { showMessageCompose = true }
                                 )
                             }
-                            UberButton(
-                                title: "More options",
-                                icon: "square.and.arrow.up",
-                                style: .secondary,
-                                action: { showShareSheet = true }
-                            )
+                            TipJarButton()
                             Button(action: onDone) {
                                 Text("Skip")
                                     .font(.system(size: 13, weight: .semibold))
@@ -89,10 +92,7 @@ struct ShareSpotView: View {
         .sheet(isPresented: $showMessageCompose) {
             MessageComposeView(recipients: selectedPhone.map { [$0] } ?? [], body: shareMessage, onDismiss: { showMessageCompose = false })
         }
-        .sheet(isPresented: $showShareSheet) {
-            ActivityView(text: shareMessage)
-        }
-        .sheet(isPresented: $showContactPicker) {
+.sheet(isPresented: $showContactPicker) {
             ContactPickerView { name, phone in
                 selectedName = name
                 selectedPhone = phone
@@ -171,7 +171,7 @@ struct ShareSpotView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                        .strokeBorder(Color.uberBorder, lineWidth: 1)
                 )
             }
             .buttonStyle(.plain)
@@ -181,24 +181,35 @@ struct ShareSpotView: View {
     // MARK: - Message Content
 
     private var shareMessage: String {
-        var lines: [String] = []
-        lines.append("📍 Parked on \(spot.streetName)")
+        var sections: [[String]] = []
+
+        // Section 1 — location
+        var location: [String] = ["📍 \(spot.streetName)"]
         if let side = spot.streetSide {
-            lines.append("\(side.displayName) side")
+            if let rel = side.relativeLabel(facing: spot.parkingHeading) {
+                location.append("\(rel) side (\(side.displayName))")
+            } else {
+                location.append("\(side.displayName) side")
+            }
         }
         if !spot.crossStreetFrom.isEmpty && !spot.crossStreetTo.isEmpty {
-            lines.append("Between \(spot.crossStreetFrom) & \(spot.crossStreetTo)")
+            location.append("Between \(spot.crossStreetFrom) & \(spot.crossStreetTo)")
         }
+        sections.append(location)
+
+        // Section 2 — street cleaning
         if let next = spot.nextCleaningDate {
             let fmt = DateFormatter()
-            fmt.dateFormat = "EEE MMM d 'at' h:mm a"
-            lines.append("⚠️ Street cleaning: \(fmt.string(from: next))")
-            let moveBy = next.addingTimeInterval(-60)
-            fmt.dateFormat = "EEE MMM d 'at' h:mm a"
-            lines.append("Move by \(fmt.string(from: moveBy))")
+            fmt.dateFormat = "EEE, MMM d 'at' h:mm a"
+            sections.append(["🧹 Street cleaning: \(fmt.string(from: next))"])
         }
-        lines.append("maps://?ll=\(spot.latitude),\(spot.longitude)&q=My+Car")
-        return lines.joined(separator: "\n")
+
+        // Section 3 — map link
+        sections.append(["🗺️ maps.apple.com/?ll=\(spot.latitude),\(spot.longitude)"])
+
+        return sections
+            .map { $0.joined(separator: "\n") }
+            .joined(separator: "\n\n")
     }
 
     // MARK: - Message Preview Card
@@ -219,7 +230,7 @@ struct ShareSpotView: View {
             .padding(.vertical, 10)
             .background(Color.uberSurface3)
 
-            // Bubble
+            // Bubble row with Sweepy avatar
             HStack(alignment: .bottom, spacing: 8) {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
@@ -228,6 +239,10 @@ struct ShareSpotView: View {
                         .font(.system(size: 10))
                         .foregroundStyle(Color.uberGray3)
                 }
+                Image("Sweepy")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 44, height: 44)
             }
             .padding(14)
         }
@@ -235,29 +250,37 @@ struct ShareSpotView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                .strokeBorder(Color.uberBorder, lineWidth: 1)
         )
+    }
+
+    private func moveByText(_ cleaningDate: Date) -> String {
+        let moveBy = cleaningDate.addingTimeInterval(-60)
+        let fmt = DateFormatter()
+        fmt.dateFormat = "EEE MMM d 'at' h:mm a"
+        return "Move by \(fmt.string(from: moveBy))"
     }
 
     private var messageBubble: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "car.fill")
-                    .font(.system(size: 11))
+                    .font(.system(size: 14))
                 Text(spot.streetName)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
             }
             .foregroundStyle(.white)
 
             if let side = spot.streetSide {
-                Text("\(side.displayName) side")
-                    .font(.system(size: 12))
+                let rel = side.relativeLabel(facing: spot.parkingHeading)
+                Text(rel.map { "\($0) side (\(side.displayName))" } ?? "\(side.displayName) side")
+                    .font(.system(size: 14))
                     .foregroundStyle(.white.opacity(0.8))
             }
 
             if !spot.crossStreetFrom.isEmpty && !spot.crossStreetTo.isEmpty {
                 Text("Between \(spot.crossStreetFrom) & \(spot.crossStreetTo)")
-                    .font(.system(size: 11))
+                    .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.7))
             }
 
@@ -265,17 +288,16 @@ struct ShareSpotView: View {
                 Divider().background(Color.white.opacity(0.2))
                 HStack(spacing: 4) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.uberAmber)
-                    Text(spot.moveByDisplay)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.uberAmber)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color(hex: "FFCC00"))
+                    Text(moveByText(next))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: "FFCC00"))
                 }
-                let _ = next // suppress unused warning
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
         .background(Color(hex: "1B7FE3")) // iMessage blue
         .clipShape(
             UnevenRoundedRectangle(
@@ -283,7 +305,7 @@ struct ShareSpotView: View {
                 bottomTrailingRadius: 4, topTrailingRadius: 18
             )
         )
-        .frame(maxWidth: 240, alignment: .trailing)
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
 

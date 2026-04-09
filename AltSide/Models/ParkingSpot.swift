@@ -20,6 +20,7 @@ class ParkingSpot {
     var nextCleaningDate: Date?
     var reminderConfig: ReminderConfig
     var isActive: Bool
+    var parkingHeading: Double = -1   // compass heading when spot was saved; -1 = unknown
 
     init(
         id: UUID = UUID(),
@@ -72,7 +73,13 @@ class ParkingSpot {
     }
 
     var moveByDisplay: String {
-        // subtract 1 minute for "move by" display
+        if let next = nextCleaningDate {
+            let moveBy = next.addingTimeInterval(-60)
+            let fmt = DateFormatter()
+            fmt.dateFormat = "EEE h:mm a"
+            return "Move by \(fmt.string(from: moveBy))"
+        }
+        // fallback: time-only from stored hour/minute
         let adjustedMinute = cleaningStartMinute == 0 ? 59 : cleaningStartMinute - 1
         let adjustedHour = cleaningStartMinute == 0 ? max(0, cleaningStartHour - 1) : cleaningStartHour
         let ah = adjustedHour == 0 ? 12 : (adjustedHour > 12 ? adjustedHour - 12 : adjustedHour)

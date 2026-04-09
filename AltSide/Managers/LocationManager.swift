@@ -27,12 +27,8 @@ final class LocationManager: NSObject {
     func startMonitoring() {
         switch manager.authorizationStatus {
         case .notDetermined:
-            manager.requestAlwaysAuthorization()
-        case .authorizedWhenInUse:
-            manager.requestAlwaysAuthorization()
-            manager.startUpdatingLocation()
-            manager.startUpdatingHeading()
-        case .authorizedAlways:
+            manager.requestWhenInUseAuthorization()
+        case .authorizedWhenInUse, .authorizedAlways:
             manager.startUpdatingLocation()
             manager.startUpdatingHeading()
         default:

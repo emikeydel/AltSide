@@ -7,61 +7,123 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A6625AAD2F7AC23C0027C505 /* AltSide.app in Frameworks */ = {isa = PBXBuildFile; fileRef = A6625AA12F7AC23C0027C505 /* AltSide.app */; };
+		A62177842F86F3ED00E6D75A /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A62177832F86F3ED00E6D75A /* WidgetKit.framework */; };
+		A62177862F86F3ED00E6D75A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A62177852F86F3ED00E6D75A /* SwiftUI.framework */; };
+		A62177952F86F3F000E6D75A /* AltSideWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A62177812F86F3ED00E6D75A /* AltSideWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A62177A22F86F7F600E6D75A /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A62177A12F86F7F600E6D75A /* ActivityKit.framework */; };
+		A63BD7BD2F86FC0B00B7AA3A /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A62177832F86F3ED00E6D75A /* WidgetKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		A6625AAE2F7AC23C0027C505 /* PBXContainerItemProxy */ = {
+		A62177932F86F3EF00E6D75A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A6625A982F7AC23C0027C505 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = A6625AA02F7AC23C0027C505;
-			remoteInfo = AltSide;
+			remoteGlobalIDString = A62177802F86F3ED00E6D75A;
+			remoteInfo = AltSideWidgetExtension;
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		A621779A2F86F3F000E6D75A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A62177952F86F3F000E6D75A /* AltSideWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		A62177812F86F3ED00E6D75A /* AltSideWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AltSideWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A62177832F86F3ED00E6D75A /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		A62177852F86F3ED00E6D75A /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		A62177A12F86F7F600E6D75A /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
+		A63BD7BB2F86FB1E00B7AA3A /* AltSideWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AltSideWidgetExtension.entitlements; sourceTree = "<group>"; };
 		A6625AA12F7AC23C0027C505 /* AltSide.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AltSide.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A6625AAC2F7AC23C0027C505 /* AltSideTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AltSideTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A62177962F86F3F000E6D75A /* Exceptions for "AltSideWidget" folder in "AltSideWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A62177802F86F3ED00E6D75A /* AltSideWidgetExtension */;
+		};
+		A621779E2F86F47700E6D75A /* Exceptions for "AltSide" folder in "AltSideWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Models/ParkingActivityAttributes.swift,
+				Models/ParkingWidgetData.swift,
+				Utilities/ASPSuspensionCalendar.swift,
+			);
+			target = A62177802F86F3ED00E6D75A /* AltSideWidgetExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A6625AA32F7AC23C0027C505 /* AltSide */ = {
+		A62177872F86F3ED00E6D75A /* AltSideWidget */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = AltSide;
+			exceptions = (
+				A62177962F86F3F000E6D75A /* Exceptions for "AltSideWidget" folder in "AltSideWidgetExtension" target */,
+			);
+			path = AltSideWidget;
 			sourceTree = "<group>";
 		};
-		A6625AB02F7AC23C0027C505 /* AltSideTests */ = {
+		A6625AA32F7AC23C0027C505 /* AltSide */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = AltSideTests;
+			exceptions = (
+				A621779E2F86F47700E6D75A /* Exceptions for "AltSide" folder in "AltSideWidgetExtension" target */,
+			);
+			path = AltSide;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		A621777E2F86F3ED00E6D75A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A62177A22F86F7F600E6D75A /* ActivityKit.framework in Frameworks */,
+				A62177862F86F3ED00E6D75A /* SwiftUI.framework in Frameworks */,
+				A62177842F86F3ED00E6D75A /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A6625A9E2F7AC23C0027C505 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		A6625AA92F7AC23C0027C505 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				A6625AAD2F7AC23C0027C505 /* AltSide.app in Frameworks */,
+				A63BD7BD2F86FC0B00B7AA3A /* WidgetKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		A62177822F86F3ED00E6D75A /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A62177A12F86F7F600E6D75A /* ActivityKit.framework */,
+				A62177832F86F3ED00E6D75A /* WidgetKit.framework */,
+				A62177852F86F3ED00E6D75A /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		A6625A972F7AC23C0027C505 = {
 			isa = PBXGroup;
 			children = (
+				A63BD7BB2F86FB1E00B7AA3A /* AltSideWidgetExtension.entitlements */,
 				A6625AA32F7AC23C0027C505 /* AltSide */,
-				A6625AB02F7AC23C0027C505 /* AltSideTests */,
+				A62177872F86F3ED00E6D75A /* AltSideWidget */,
+				A62177822F86F3ED00E6D75A /* Frameworks */,
 				A6625AA22F7AC23C0027C505 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -70,7 +132,7 @@
 			isa = PBXGroup;
 			children = (
 				A6625AA12F7AC23C0027C505 /* AltSide.app */,
-				A6625AAC2F7AC23C0027C505 /* AltSideTests.xctest */,
+				A62177812F86F3ED00E6D75A /* AltSideWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -78,6 +140,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		A62177802F86F3ED00E6D75A /* AltSideWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A62177972F86F3F000E6D75A /* Build configuration list for PBXNativeTarget "AltSideWidgetExtension" */;
+			buildPhases = (
+				A621777D2F86F3ED00E6D75A /* Sources */,
+				A621777E2F86F3ED00E6D75A /* Frameworks */,
+				A621777F2F86F3ED00E6D75A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A62177872F86F3ED00E6D75A /* AltSideWidget */,
+			);
+			name = AltSideWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = AltSideWidgetExtension;
+			productReference = A62177812F86F3ED00E6D75A /* AltSideWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		A6625AA02F7AC23C0027C505 /* AltSide */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A6625AB52F7AC23C0027C505 /* Build configuration list for PBXNativeTarget "AltSide" */;
@@ -85,10 +169,12 @@
 				A6625A9D2F7AC23C0027C505 /* Sources */,
 				A6625A9E2F7AC23C0027C505 /* Frameworks */,
 				A6625A9F2F7AC23C0027C505 /* Resources */,
+				A621779A2F86F3F000E6D75A /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A62177942F86F3EF00E6D75A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A6625AA32F7AC23C0027C505 /* AltSide */,
@@ -100,29 +186,6 @@
 			productReference = A6625AA12F7AC23C0027C505 /* AltSide.app */;
 			productType = "com.apple.product-type.application";
 		};
-		A6625AAB2F7AC23C0027C505 /* AltSideTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = A6625AB82F7AC23C0027C505 /* Build configuration list for PBXNativeTarget "AltSideTests" */;
-			buildPhases = (
-				A6625AA82F7AC23C0027C505 /* Sources */,
-				A6625AA92F7AC23C0027C505 /* Frameworks */,
-				A6625AAA2F7AC23C0027C505 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				A6625AAF2F7AC23C0027C505 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				A6625AB02F7AC23C0027C505 /* AltSideTests */,
-			);
-			name = AltSideTests;
-			packageProductDependencies = (
-			);
-			productName = AltSideTests;
-			productReference = A6625AAC2F7AC23C0027C505 /* AltSideTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -133,10 +196,10 @@
 				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
-					A6625AA02F7AC23C0027C505 = {
+					A62177802F86F3ED00E6D75A = {
 						CreatedOnToolsVersion = 26.4;
 					};
-					A6625AAB2F7AC23C0027C505 = {
+					A6625AA02F7AC23C0027C505 = {
 						CreatedOnToolsVersion = 26.4;
 					};
 				};
@@ -156,20 +219,20 @@
 			projectRoot = "";
 			targets = (
 				A6625AA02F7AC23C0027C505 /* AltSide */,
-				A6625AAB2F7AC23C0027C505 /* AltSideTests */,
+				A62177802F86F3ED00E6D75A /* AltSideWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		A6625A9F2F7AC23C0027C505 /* Resources */ = {
+		A621777F2F86F3ED00E6D75A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A6625AAA2F7AC23C0027C505 /* Resources */ = {
+		A6625A9F2F7AC23C0027C505 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -179,14 +242,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A6625A9D2F7AC23C0027C505 /* Sources */ = {
+		A621777D2F86F3ED00E6D75A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A6625AA82F7AC23C0027C505 /* Sources */ = {
+		A6625A9D2F7AC23C0027C505 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -196,14 +259,82 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		A6625AAF2F7AC23C0027C505 /* PBXTargetDependency */ = {
+		A62177942F86F3EF00E6D75A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = A6625AA02F7AC23C0027C505 /* AltSide */;
-			targetProxy = A6625AAE2F7AC23C0027C505 /* PBXContainerItemProxy */;
+			target = A62177802F86F3ED00E6D75A /* AltSideWidgetExtension */;
+			targetProxy = A62177932F86F3EF00E6D75A /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		A62177982F86F3F000E6D75A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
+				CODE_SIGN_ENTITLEMENTS = AltSideWidgetExtension.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 37AKZN7WU7;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AltSideWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AltSideWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = LaidOffDad.AltSide.AltSideWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A62177992F86F3F000E6D75A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
+				CODE_SIGN_ENTITLEMENTS = AltSideWidgetExtension.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 37AKZN7WU7;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AltSideWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AltSideWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = LaidOffDad.AltSide.AltSideWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 		A6625AB32F7AC23C0027C505 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -333,17 +464,21 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AltSide/AltSide.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 37AKZN7WU7;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "AltSide uses your location to detect when you park and show nearby street cleaning schedules.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "AltSide uses your location in the background to detect when you have parked.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "AltSide needs your location to find nearby street cleaning schedules.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "AltSide uses motion data to detect when your car has stopped moving.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -351,12 +486,13 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = LaidOffDad.AltSide;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -364,17 +500,21 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AltSide/AltSide.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 37AKZN7WU7;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "AltSide uses your location to detect when you park and show nearby street cleaning schedules.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "AltSide uses your location in the background to detect when you have parked.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "AltSide needs your location to find nearby street cleaning schedules.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "AltSide uses motion data to detect when your car has stopped moving.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -382,54 +522,28 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = LaidOffDad.AltSide;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Release;
-		};
-		A6625AB92F7AC23C0027C505 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = LaidOffDad.AltSideTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		A6625ABA2F7AC23C0027C505 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = LaidOffDad.AltSideTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A62177972F86F3F000E6D75A /* Build configuration list for PBXNativeTarget "AltSideWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A62177982F86F3F000E6D75A /* Debug */,
+				A62177992F86F3F000E6D75A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A6625A9B2F7AC23C0027C505 /* Build configuration list for PBXProject "AltSide" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -444,15 +558,6 @@
 			buildConfigurations = (
 				A6625AB62F7AC23C0027C505 /* Debug */,
 				A6625AB72F7AC23C0027C505 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		A6625AB82F7AC23C0027C505 /* Build configuration list for PBXNativeTarget "AltSideTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				A6625AB92F7AC23C0027C505 /* Debug */,
-				A6625ABA2F7AC23C0027C505 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

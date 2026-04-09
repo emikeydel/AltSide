@@ -46,7 +46,7 @@ struct UberButton: View {
 
     private var foregroundColor: Color {
         switch style {
-        case .primary:     .black
+        case .primary:     .white
         case .secondary:   .uberWhite
         case .ghost:       .uberGray3
         case .destructive: .uberRed
@@ -65,7 +65,7 @@ struct UberButton: View {
     private var borderColor: Color {
         switch style {
         case .primary:     .clear
-        case .secondary:   Color.white.opacity(0.1)
+        case .secondary:   Color.uberBorder
         case .ghost:       .clear
         case .destructive: .clear
         }

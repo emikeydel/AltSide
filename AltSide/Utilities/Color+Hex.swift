@@ -27,17 +27,18 @@ extension Color {
 // MARK: - Design System Tokens
 
 extension Color {
-    static let uberBlack    = Color(hex: "000000")
-    static let uberSurface  = Color(hex: "1A1A1A")
-    static let uberSurface2 = Color(hex: "242424")
-    static let uberSurface3 = Color(hex: "2E2E2E")
-    static let uberGreen    = Color(hex: "06C167")
-    static let uberGreenDim = Color(hex: "06C167").opacity(0.15)
-    static let uberAmber    = Color(hex: "F6961E")
-    static let uberAmberDim = Color(hex: "F6961E").opacity(0.12)
-    static let uberWhite    = Color.white
-    static let uberGray1    = Color(hex: "EEEEEE")
-    static let uberGray2    = Color(hex: "B2B2B2")
-    static let uberGray3    = Color(hex: "6B6B6B")
-    static let uberRed      = Color(hex: "E24B4A")
+    static let uberBlack    = Color(hex: "EAE8E0")          // warm cream — app background
+    static let uberSurface  = Color.white                    // card / panel background
+    static let uberSurface2 = Color(hex: "F5F2EC")          // secondary surface
+    static let uberSurface3 = Color(hex: "E8E4DC")          // chip / tertiary surface
+    static let uberGreen    = Color(hex: "2DB349")           // primary green
+    static let uberGreenDim = Color(hex: "2DB349").opacity(0.15)
+    static let uberAmber    = Color(hex: "FF5E00")           // warning orange
+    static let uberAmberDim = Color(hex: "FF5E00").opacity(0.15)
+    static let uberWhite    = Color(hex: "1A1A1A")           // primary text (dark on light bg)
+    static let uberGray1    = Color(hex: "333333")           // secondary dark text
+    static let uberGray2    = Color(hex: "555555")           // medium text
+    static let uberGray3    = Color(hex: "888888")           // muted / caption
+    static let uberRed      = Color(hex: "E24B4A")           // error / car pin
+    static let uberBorder   = Color.black.opacity(0.08)      // card border on light bg
 }

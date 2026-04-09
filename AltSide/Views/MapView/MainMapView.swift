@@ -1,6 +1,8 @@
 import SwiftUI
 import MapKit
 import SwiftData
+import WidgetKit
+import Combine
 
 // MARK: - Modal routing
 
@@ -22,6 +24,7 @@ private enum ModalSheet: Identifiable {
 
 struct MainMapView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Query(filter: #Predicate<ParkingSpot> { $0.isActive }) private var spots: [ParkingSpot]
 
     var locationManager: LocationManager
@@ -29,6 +32,7 @@ struct MainMapView: View {
     var bluetoothManager: BluetoothManager
     var cleaningDataManager: CleaningDataManager
     var notificationManager: NotificationManager
+    var liveActivityManager: LiveActivityManager
 
     @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var activeModal: ModalSheet?
@@ -41,6 +45,7 @@ struct MainMapView: View {
     @State private var screenHeight: CGFloat = 800
     @State private var showOutsideNYC = false
     @State private var showWelcome = false
+    @State private var hasZoomedToUser = false
 
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
 
@@ -52,7 +57,8 @@ struct MainMapView: View {
                 SavedSpotView(
                     spot: spot,
                     onClear: { clearSpot(spot) },
-                    onNavigate: { navigateToCar(spot) }
+                    onNavigate: { navigateToCar(spot) },
+                    notificationManager: notificationManager
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             } else {
@@ -119,12 +125,38 @@ struct MainMapView: View {
         .onChange(of: bluetoothManager.justDisconnectedFromCar) { _, disconnected in
             if disconnected && savedSpot == nil { triggerSaveFlow() }
         }
+        .onChange(of: notificationManager.pendingAction) { _, action in
+            guard let action else { return }
+            handleNotificationAction(action)
+            notificationManager.pendingAction = nil
+        }
+        .task(id: spots.first?.id) { syncWidgetData() }
+        .onChange(of: spots) { _, _ in syncWidgetData() }
+        // Check every 5 minutes whether it's time to start the Live Activity
+        .onReceive(Timer.publish(every: 300, on: .main, in: .common).autoconnect()) { _ in
+            if let spot = spots.first { liveActivityManager.startIfNeeded(for: spot) }
+        }
+        // Also check immediately when the app comes back to foreground
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, let spot = spots.first {
+                liveActivityManager.startIfNeeded(for: spot)
+            }
+        }
         .onChange(of: locationManager.coordinate.latitude) { _, lat in
             guard lat != 0, !showOutsideNYC else { return }
             let borough = CleaningDataManager.borough(for: locationManager.coordinate)
             if borough.isEmpty {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                     showOutsideNYC = true
+                }
+            }
+            if !hasZoomedToUser {
+                hasZoomedToUser = true
+                withAnimation {
+                    cameraPosition = .camera(MapCamera(
+                        centerCoordinate: locationManager.coordinate,
+                        distance: 400
+                    ))
                 }
             }
         }
@@ -137,11 +169,15 @@ struct MainMapView: View {
             UserAnnotation()
             if let spot = savedSpot {
                 Annotation("My Car", coordinate: spot.coordinate) {
-                    savedSpotPin
+                    savedSpotPin(for: spot)
                 }
             }
         }
         .mapStyle(.standard)
+        .environment(\.colorScheme, .light)
+        .safeAreaInset(edge: .bottom) {
+            Color.clear.frame(height: panelCollapsedHeight)
+        }
         .mapControls {
             MapUserLocationButton()
             MapCompass()
@@ -149,19 +185,20 @@ struct MainMapView: View {
         .ignoresSafeArea()
     }
 
-    private var savedSpotPin: some View {
-        ZStack {
+    private func savedSpotPin(for spot: ParkingSpot) -> some View {
+        let color: Color = spot.isCleaningSoon ? Color.uberAmber : Color.uberGreen
+        return ZStack {
             Circle()
-                .fill(Color.uberRed.opacity(0.2))
+                .fill(color.opacity(0.2))
                 .frame(width: 48, height: 48)
             Circle()
-                .fill(Color.uberRed)
+                .fill(color)
                 .frame(width: 32, height: 32)
             Image(systemName: "car.fill")
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(.white)
         }
-        .shadow(color: Color.uberRed.opacity(0.5), radius: 8)
+        .shadow(color: color.opacity(0.5), radius: 8)
     }
 
     // MARK: - Bottom Panel Overlay (replaces persistent sheet)
@@ -209,6 +246,7 @@ struct MainMapView: View {
                                     userCoordinate: locationManager.coordinate
                                 )
                                 bestBlock = best
+                                withAnimation { locationManager.scoutModeActive = false }
                                 createSpot(street: street, side: side)
                             }
                         }
@@ -216,8 +254,14 @@ struct MainMapView: View {
                 } else {
                     NoSpotPanel(
                         isLoading: isResolvingStreet || cleaningDataManager.isLoading,
-                        onSaveTap: { triggerSaveFlow() },
-                        onScoutTap: { withAnimation { locationManager.scoutModeActive = true } }
+                        onSaveTap: {
+                            motionManager.startMonitoring()
+                            triggerSaveFlow()
+                        },
+                        onScoutTap: {
+                            motionManager.startMonitoring()
+                            withAnimation { locationManager.scoutModeActive = true }
+                        }
                     )
                 }
             }
@@ -226,7 +270,7 @@ struct MainMapView: View {
         .frame(height: isBottomPanelExpanded ? panelExpandedHeight : panelCollapsedHeight)
         .background(Color.uberSurface)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .shadow(color: .black.opacity(0.4), radius: 16, y: -4)
+        .shadow(color: .black.opacity(0.2), radius: 12, y: -4)
         .gesture(
             DragGesture(minimumDistance: 20)
                 .onEnded { value in
@@ -243,9 +287,9 @@ struct MainMapView: View {
     }
 
     private var panelCollapsedHeight: CGFloat {
-        locationManager.scoutModeActive ? screenHeight * 0.55 : screenHeight * 0.35
+        locationManager.scoutModeActive ? screenHeight * 0.68 : screenHeight * 0.44
     }
-    private var panelExpandedHeight: CGFloat { screenHeight * 0.75 }
+    private var panelExpandedHeight: CGFloat { screenHeight * 0.88 }
 
     // MARK: - Modal content
 
@@ -258,12 +302,12 @@ struct MainMapView: View {
                     coordinate: locationManager.coordinate,
                     streetName: street.name,
                     entries: streetEntries,
-                    heading: locationManager.heading,
+                    locationManager: locationManager,
                     streetOrientation: street.orientation,
-                    onConfirm: { side in
+                    onConfirm: { side, confirmedEntries in
                         activeModal = nil
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            createSpot(street: street, side: side)
+                            createSpot(street: street, side: side, confirmedEntries: confirmedEntries)
                         }
                     }
                 )
@@ -302,6 +346,7 @@ struct MainMapView: View {
                     spot: spot,
                     onSave: {
                         Task { await notificationManager.scheduleAlerts(for: spot) }
+                        Task { await liveActivityManager.updateActivity(for: spot) }
                         activeModal = nil
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                             activeModal = .parkedSummary
@@ -324,7 +369,8 @@ struct MainMapView: View {
                     onDone: {
                         activeModal = nil
                         pendingSpot = nil
-                    }
+                    },
+                    notificationManager: notificationManager
                 )
                 .presentationDetents([.large])
             }
@@ -338,11 +384,23 @@ struct MainMapView: View {
         Task {
             do {
                 let street = try await BlockMatcher.resolve(coordinate: locationManager.coordinate)
-                let entries = await cleaningDataManager.loadSchedule(
+                let allEntries = await cleaningDataManager.loadSchedule(
                     streetName: street.normalizedName,
                     borough: street.borough,
                     coordinate: locationManager.coordinate
                 )
+
+                // Pre-filter to signs within ~300 m (984 ft) of the user, matching
+                // the same proximity window scout mode uses for its nearbyEntries display.
+                // Entries with NULL sign coords are kept so the cross-street fallback still works.
+                let coord = locationManager.coordinate
+                let (ux, uy) = CleaningDataManager.wgs84ToStatePlane(lat: coord.latitude, lon: coord.longitude)
+                let nearby = allEntries.filter { e in
+                    guard let sx = e.signXCoord, let sy = e.signYCoord else { return false }
+                    return sqrt((sx - ux) * (sx - ux) + (sy - uy) * (sy - uy)) <= 984
+                }
+                let entries = nearby.isEmpty ? allEntries : nearby
+
                 let best = await BlockMatcher.findBestBlock(
                     entries: entries,
                     streetName: street.normalizedName,
@@ -370,16 +428,28 @@ struct MainMapView: View {
         }
     }
 
-    private func createSpot(street: BlockMatcher.ResolvedStreet, side: SideDetector.StreetSide) {
-        let sideEntries = streetEntries.filter { $0.normalizedSide == side }
-
-        // Prefer entries from the user's specific block; fall back to all side entries.
+    private func createSpot(
+        street: BlockMatcher.ResolvedStreet,
+        side: SideDetector.StreetSide,
+        confirmedEntries: [StreetCleaningEntry]? = nil
+    ) {
+        // If entries were passed directly from the picker (already proximity-filtered and
+        // shown to the user), use them as-is. Otherwise fall back to blockMatchedEntries
+        // (scout mode path, which handles its own filtering).
+        let pool = confirmedEntries ?? streetEntries
+        let sideEntries = pool.filter { $0.normalizedSide == side }
         let blockEntries = blockMatchedEntries(sideEntries, street: street)
         let source = blockEntries.isEmpty ? sideEntries : blockEntries
 
+        // Sort by next cleaning date so dedupedEntries.first is always the most imminent entry,
+        // ensuring the stored time window matches the next actual cleaning event.
+        let sorted = source.sorted {
+            ($0.nextCleaningDate() ?? .distantFuture) < ($1.nextCleaningDate() ?? .distantFuture)
+        }
+
         // One entry per cleaning day — avoid duplicates from multiple signs on the same block.
         var seenDays = Set<Int>()
-        let dedupedEntries = source.filter { entry in
+        let dedupedEntries = sorted.filter { entry in
             guard let day = entry.weekdayInt, !seenDays.contains(day) else { return false }
             seenDays.insert(day)
             return true
@@ -406,8 +476,15 @@ struct MainMapView: View {
             cleaningEndHour: dedupedEntries.first?.endHour ?? 9,
             cleaningEndMinute: dedupedEntries.first?.endMinute ?? 30
         )
+        spot.parkingHeading = locationManager.heading
         spot.refreshNextCleaningDate()
         modelContext.insert(spot)
+        syncWidgetData(with: spot)
+        liveActivityManager.startIfNeeded(for: spot)
+        // Request notification permission on first save — contextually relevant
+        if notificationManager.authorizationStatus == .notDetermined {
+            Task { _ = await notificationManager.requestPermission() }
+        }
         pendingSpot = spot
         activeModal = .saveConfirm
     }
@@ -455,8 +532,43 @@ struct MainMapView: View {
     }
 
 
+    private func syncWidgetData() {
+        syncWidgetData(with: spots.first)
+    }
+
+    private func syncWidgetData(with spot: ParkingSpot?) {
+        if let spot = spot {
+            ParkingWidgetData(
+                streetName: spot.streetName,
+                sideDisplayName: {
+                    guard let side = spot.streetSide else { return "" }
+                    let rel = side.relativeLabel(facing: spot.parkingHeading)
+                    return rel.map { "\($0) side (\(side.displayName))" } ?? "\(side.displayName) side"
+                }(),
+                moveByDisplay: spot.moveByDisplay,
+                scheduleDisplay: {
+                    guard let next = spot.nextCleaningDate else { return "" }
+                    let dayFmt = DateFormatter(); dayFmt.dateFormat = "EEE"
+                    func t(_ h: Int, _ m: Int) -> String {
+                        let h12 = h == 0 ? 12 : (h > 12 ? h - 12 : h)
+                        let p = h < 12 ? "AM" : "PM"
+                        return m == 0 ? "\(h12) \(p)" : "\(h12):\(String(format: "%02d", m)) \(p)"
+                    }
+                    return "\(dayFmt.string(from: next)) \(t(spot.cleaningStartHour, spot.cleaningStartMinute)) – \(t(spot.cleaningEndHour, spot.cleaningEndMinute))"
+                }(),
+                cleaningDate: spot.nextCleaningDate,
+                isCleaningSoon: spot.isCleaningSoon,
+                isParked: true
+            ).save()
+        } else {
+            ParkingWidgetData.clear()
+        }
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
     private func clearSpot(_ spot: ParkingSpot) {
         Task { await notificationManager.cancelAlerts(for: spot.id) }
+        Task { await liveActivityManager.endActivity() }
         spot.isActive = false
         try? modelContext.save()
     }
@@ -465,6 +577,18 @@ struct MainMapView: View {
         let url = URL(string: "maps://?ll=\(spot.latitude),\(spot.longitude)&q=My+Car")!
         if UIApplication.shared.canOpenURL(url) {
             UIApplication.shared.open(url)
+        }
+    }
+
+    /// Called when the user taps an action button on a notification.
+    private func handleNotificationAction(_ action: ParkingNotificationAction) {
+        switch action {
+        case .clearSpot(let id):
+            guard let spot = spots.first(where: { $0.id == id }) else { return }
+            clearSpot(spot)
+        case .navigateTo(let id):
+            guard let spot = spots.first(where: { $0.id == id }) else { return }
+            navigateToCar(spot)
         }
     }
 }
@@ -496,14 +620,20 @@ struct NoSpotPanel: View {
                 title: "Save spot here",
                 icon: "location.fill",
                 isLoading: isLoading,
-                action: onSaveTap
+                action: {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onSaveTap()
+                }
             )
 
             UberButton(
                 title: "Use my location and find parking",
                 icon: "dot.radiowaves.left.and.right",
                 style: .secondary,
-                action: onScoutTap
+                action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onScoutTap()
+                }
             )
         }
         .padding(.horizontal, 20)

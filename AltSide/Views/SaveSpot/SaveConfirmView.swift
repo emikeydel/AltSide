@@ -6,37 +6,27 @@ struct SaveConfirmView: View {
     let onShare: () -> Void
     let onDone: () -> Void
 
-    @State private var checkmarkScale: CGFloat = 0.3
-    @State private var checkmarkOpacity: Double = 0
+    @State private var sweepyScale: CGFloat = 0.3
+    @State private var sweepyOpacity: Double = 0
+    @State private var breatheScale: CGFloat = 1.0
 
     var body: some View {
         ZStack {
             Color.uberBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Drag handle
-                Capsule()
-                    .fill(Color.uberGray3.opacity(0.5))
-                    .frame(width: 36, height: 4)
-                    .padding(.top, 12)
+                CardHeader()
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 28) {
-                        // Animated checkmark
-                        ZStack {
-                            Circle()
-                                .fill(Color.uberGreen.opacity(0.12))
-                                .frame(width: 96, height: 96)
-                            Circle()
-                                .fill(Color.uberGreen.opacity(0.2))
-                                .frame(width: 72, height: 72)
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 48))
-                                .foregroundStyle(Color.uberGreen)
-                        }
-                        .scaleEffect(checkmarkScale)
-                        .opacity(checkmarkOpacity)
-                        .padding(.top, 32)
+                        // Sweepy celebration
+                        Image("SweepyBubbles")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 180)
+                            .scaleEffect(sweepyScale * breatheScale)
+                            .opacity(sweepyOpacity)
+                            .padding(.top, 16)
 
                         // Title
                         VStack(spacing: 8) {
@@ -48,7 +38,8 @@ struct SaveConfirmView: View {
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(Color.uberGreen)
                             if let side = spot.streetSide {
-                                Text("\(side.displayName) side")
+                                let rel = side.relativeLabel(facing: spot.parkingHeading)
+                                Text(rel.map { "\($0) side (\(side.displayName))" } ?? "\(side.displayName) side")
                                     .font(.system(size: 13))
                                     .foregroundStyle(Color.uberGray2)
                             }
@@ -86,9 +77,15 @@ struct SaveConfirmView: View {
             }
         }
         .onAppear {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
             withAnimation(.spring(response: 0.5, dampingFraction: 0.65)) {
-                checkmarkScale = 1.0
-                checkmarkOpacity = 1.0
+                sweepyScale = 1.0
+                sweepyOpacity = 1.0
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                    breatheScale = 1.06
+                }
             }
         }
     }
@@ -102,7 +99,7 @@ struct SaveConfirmView: View {
                     value: nextCleaningText(next),
                     valueColor: spot.isCleaningSoon ? Color.uberAmber : Color.uberWhite
                 )
-                Divider().background(Color.white.opacity(0.08))
+                Divider().background(Color.uberBorder)
                 infoRow(
                     icon: "clock.arrow.circlepath",
                     label: "Move by",
@@ -119,7 +116,7 @@ struct SaveConfirmView: View {
             }
 
             if !spot.crossStreetFrom.isEmpty || !spot.crossStreetTo.isEmpty {
-                Divider().background(Color.white.opacity(0.08))
+                Divider().background(Color.uberBorder)
                 infoRow(
                     icon: "arrow.left.and.right",
                     label: "Between",

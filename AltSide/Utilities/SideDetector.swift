@@ -26,6 +26,26 @@ enum SideDetector {
             case .west: return "W"
             }
         }
+
+        /// Returns "Left" or "Right" relative to the heading the driver was facing
+        /// when they parked. Returns nil if heading is unknown (< 0).
+        func relativeLabel(facing heading: CLLocationDirection) -> String? {
+            guard heading >= 0 else { return nil }
+            let rad   = heading * .pi / 180
+            let userX = sin(rad)   // east component
+            let userY = cos(rad)   // north component
+
+            let (sideX, sideY): (Double, Double)
+            switch self {
+            case .north: (sideX, sideY) = (0,  1)
+            case .south: (sideX, sideY) = (0, -1)
+            case .east:  (sideX, sideY) = (1,  0)
+            case .west:  (sideX, sideY) = (-1, 0)
+            }
+            // Cross product > 0 means side is to the LEFT of the user's forward direction
+            let cross = userX * sideY - userY * sideX
+            return cross > 0 ? "Left" : "Right"
+        }
     }
 
     enum StreetOrientation {

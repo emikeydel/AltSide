@@ -23,41 +23,29 @@ struct OutsideNYCView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    // Top icon
-                    VStack(spacing: 16) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.uberAmber.opacity(0.12))
-                                .frame(width: 80, height: 80)
-                            Image(systemName: "location.slash.fill")
-                                .font(.system(size: 36))
-                                .foregroundStyle(Color.uberAmber)
-                        }
-                        .padding(.top, 64)
+                    // SweepyFail illustration
+                    Image("SweepyFail")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 220)
+                        .padding(.horizontal, 60)
+                        .padding(.top, 60)
 
+                    // Title
+                    VStack(spacing: 4) {
+                        Text("Oh no!")
+                            .font(.system(size: 30, weight: .black))
+                            .foregroundStyle(Color.uberGreen)
                         Text("Outside Service Area")
-                            .font(.system(size: 26, weight: .black))
-                            .tracking(-0.8)
-                            .foregroundStyle(Color.uberWhite)
-                            .multilineTextAlignment(.center)
-
-                        Text("AltSide only works in New York City. It looks like you're outside the service area.\n\nIf this is an error or you're interested in a specific location, enter the NYC address below.")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color.uberGray2)
-                            .multilineTextAlignment(.center)
-                            .lineSpacing(3)
-                            .padding(.horizontal, 8)
+                            .font(.system(size: 30, weight: .black))
+                            .foregroundStyle(Color.uberGreen)
                     }
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 16)
                     .padding(.horizontal, 28)
 
                     // Search field
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("ENTER AN NYC LOCATION")
-                            .font(.system(size: 10, weight: .bold))
-                            .tracking(1.5)
-                            .foregroundStyle(Color.uberGray3)
-                            .padding(.top, 36)
-
                         HStack(spacing: 10) {
                             Image(systemName: "magnifyingglass")
                                 .font(.system(size: 14))
@@ -90,11 +78,11 @@ struct OutsideNYCView: View {
                             }
                         }
                         .padding(14)
-                        .background(Color.uberSurface2)
+                        .background(Color.uberSurface)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
-                                .strokeBorder(fieldFocused ? Color.uberGreen.opacity(0.5) : Color.white.opacity(0.08), lineWidth: 1)
+                                .strokeBorder(fieldFocused ? Color.uberGreen.opacity(0.5) : Color.uberBorder, lineWidth: 1)
                         )
                         .onChange(of: searchText) { _, text in
                             searchError = nil
@@ -114,6 +102,7 @@ struct OutsideNYCView: View {
                         }
                     }
                     .padding(.horizontal, 24)
+                    .padding(.top, 32)
 
                     // Results list
                     if !results.isEmpty {
@@ -126,13 +115,18 @@ struct OutsideNYCView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                                .strokeBorder(Color.uberBorder, lineWidth: 1)
                         )
                         .padding(.horizontal, 24)
                         .padding(.top, 8)
                     }
 
-                    Spacer().frame(height: 60)
+                    // Tip jar
+                    TipJarButton()
+                        .padding(.horizontal, 24)
+                        .padding(.top, 32)
+
+                    Spacer().frame(height: 40)
                 }
             }
         }
@@ -201,7 +195,6 @@ struct OutsideNYCView: View {
         isSearching = true
 
         let request = MKLocalSearch.Request()
-        // Append "New York" to bias results toward NYC
         request.naturalLanguageQuery = "\(searchText), New York"
         request.region = nycRegion
         request.resultTypes = [.address, .pointOfInterest]
@@ -209,7 +202,6 @@ struct OutsideNYCView: View {
         Task {
             do {
                 let response = try await MKLocalSearch(request: request).start()
-                // Show up to 5 results, prioritising those inside NYC
                 let sorted = response.mapItems.sorted { a, b in
                     let aIn = !CleaningDataManager.borough(for: a.location.coordinate).isEmpty
                     let bIn = !CleaningDataManager.borough(for: b.location.coordinate).isEmpty

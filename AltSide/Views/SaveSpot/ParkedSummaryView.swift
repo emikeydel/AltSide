@@ -3,42 +3,46 @@ import SwiftUI
 struct ParkedSummaryView: View {
     let spot: ParkingSpot
     let onDone: () -> Void
+    var notificationManager: NotificationManager? = nil
 
     @State private var showShare = false
+    @State private var showEditReminders = false
+    @State private var sweepyScale: CGFloat = 0.5
+    @State private var sweepyOpacity: Double = 0
 
-    private var accentColor: Color {
-        spot.isCleaningSoon ? Color.uberAmber : Color.uberGreen
-    }
+    private var accentColor: Color { Color.uberGreen }
 
     var body: some View {
         ZStack {
             Color.uberBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Drag handle
                 Capsule()
-                    .fill(Color.uberGray3.opacity(0.5))
+                    .fill(Color.uberGray3.opacity(0.4))
                     .frame(width: 36, height: 4)
                     .padding(.top, 12)
+                    .padding(.bottom, 4)
 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 28) {
+                    VStack(spacing: 24) {
 
-                        // Header
+                        Image("SweepySplash")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 180)
+                            .scaleEffect(sweepyScale)
+                            .opacity(sweepyOpacity)
+                            .padding(.top, 8)
+
                         parkedHeader
-
-                        // Countdown section
                         countdownSection
-
-                        // Schedule detail card
                         scheduleCard
+                        remindersCard
 
-                        // Action buttons
                         VStack(spacing: 10) {
                             UberButton(
                                 title: "Share my location",
                                 icon: "square.and.arrow.up",
-                                style: .secondary,
                                 action: { showShare = true }
                             )
                             Button(action: onDone) {
@@ -53,45 +57,53 @@ struct ParkedSummaryView: View {
                         Spacer().frame(height: 20)
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 24)
+                    .padding(.top, 8)
                 }
             }
         }
         .sheet(isPresented: $showShare) {
             ShareSpotView(spot: spot, onDone: { showShare = false })
         }
+        .sheet(isPresented: $showEditReminders) {
+            ReminderSetupView(
+                spot: spot,
+                onSave: {
+                    if let nm = notificationManager {
+                        Task { await nm.scheduleAlerts(for: spot) }
+                    }
+                    showEditReminders = false
+                },
+                onSkip: { showEditReminders = false }
+            )
+            .presentationDetents([.large])
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                sweepyScale = 1.0
+                sweepyOpacity = 1.0
+            }
+        }
     }
 
     // MARK: - Header
 
     private var parkedHeader: some View {
-        VStack(spacing: 10) {
-            // Status pill
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(accentColor)
-                    .frame(width: 7, height: 7)
-                Text(spot.isCleaningSoon ? "MOVE SOON" : "YOU'RE PARKED")
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(1.5)
-                    .foregroundStyle(accentColor)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(accentColor.opacity(0.12))
-            .clipShape(Capsule())
+        VStack(spacing: 8) {
+            Text(spot.isCleaningSoon ? "MOVE SOON" : "YOU'RE PARKED")
+                .font(.system(size: 13, weight: .black))
+                .tracking(1.5)
+                .foregroundStyle(accentColor)
 
-            // Street name
             Text(spot.streetName)
                 .font(.system(size: 34, weight: .black))
                 .tracking(-1)
                 .foregroundStyle(Color.uberWhite)
                 .multilineTextAlignment(.center)
 
-            // Side + cross streets
             VStack(spacing: 4) {
                 if let side = spot.streetSide {
-                    Text("\(side.displayName) side of the street")
+                    let rel = side.relativeLabel(facing: spot.parkingHeading)
+                    Text(rel.map { "\($0) side (\(side.displayName))" } ?? "\(side.displayName) side")
                         .font(.system(size: 15))
                         .foregroundStyle(Color.uberGray2)
                 }
@@ -110,29 +122,22 @@ struct ParkedSummaryView: View {
     private var countdownSection: some View {
         VStack(spacing: 12) {
             if let next = spot.nextCleaningDate, next > Date() {
-                VStack(spacing: 8) {
-                    Text("TIME UNTIL YOU MUST MOVE")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.5)
-                        .foregroundStyle(Color.uberGray3)
+                VStack(spacing: 12) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 14))
+                        Text(spot.moveByDisplay)
+                            .font(.system(size: 15, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color(hex: "1A1A1A"))
+                    .clipShape(Capsule())
 
-                    // Big countdown blocks — centered, slightly larger
                     LiveCountdownBlocksView(targetDate: next, accentColor: accentColor)
                         .scaleEffect(1.1)
                         .padding(.vertical, 4)
-
-                    // Move-by callout
-                    HStack(spacing: 6) {
-                        Image(systemName: spot.isCleaningSoon ? "exclamationmark.triangle.fill" : "clock.badge.checkmark")
-                            .font(.system(size: 13))
-                        Text(spot.moveByDisplay)
-                            .font(.system(size: 14, weight: .bold))
-                    }
-                    .foregroundStyle(accentColor)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(accentColor.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
             } else {
                 HStack(spacing: 8) {
@@ -147,15 +152,15 @@ struct ParkedSummaryView: View {
                 .frame(maxWidth: .infinity)
                 .background(Color.uberSurface)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.uberBorder, lineWidth: 1))
             }
         }
     }
 
-    // MARK: - Schedule detail card
+    // MARK: - Schedule Card
 
     private var scheduleCard: some View {
         VStack(spacing: 0) {
-            // Card header
             HStack {
                 Text("CLEANING SCHEDULE")
                     .font(.system(size: 10, weight: .bold))
@@ -167,38 +172,23 @@ struct ParkedSummaryView: View {
             .padding(.top, 14)
             .padding(.bottom, 10)
 
-            Divider().background(Color.white.opacity(0.08))
+            Divider().background(Color.uberBorder)
 
             VStack(spacing: 0) {
-                scheduleRow(
-                    icon: "calendar",
-                    label: "Days",
-                    value: cleaningDaysText
-                )
-                Divider().background(Color.white.opacity(0.08)).padding(.horizontal, 14)
-                scheduleRow(
-                    icon: "clock",
-                    label: "Time window",
-                    value: timeWindowText
-                )
+                scheduleRow(icon: "calendar", label: "Days", value: cleaningDaysText)
+                Divider().background(Color.uberBorder).padding(.horizontal, 14)
+                scheduleRow(icon: "clock", label: "Time window", value: timeWindowText)
                 if let next = spot.nextCleaningDate {
-                    Divider().background(Color.white.opacity(0.08)).padding(.horizontal, 14)
-                    scheduleRow(
-                        icon: "arrow.clockwise",
-                        label: "Next cleaning",
-                        value: nextCleaningText(next),
-                        valueColor: accentColor
-                    )
+                    Divider().background(Color.uberBorder).padding(.horizontal, 14)
+                    scheduleRow(icon: "arrow.clockwise", label: "Next cleaning",
+                                value: nextCleaningText(next), valueColor: accentColor)
                 }
             }
             .padding(.bottom, 4)
         }
         .background(Color.uberSurface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-        )
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.uberBorder, lineWidth: 1))
     }
 
     private func scheduleRow(icon: String, label: String, value: String, valueColor: Color = Color.uberWhite) -> some View {
@@ -218,6 +208,93 @@ struct ParkedSummaryView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+    }
+
+    // MARK: - Reminders Card
+
+    private var remindersCard: some View {
+        VStack(spacing: 0) {
+            // Header row
+            HStack {
+                Text("REMINDERS")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.5)
+                    .foregroundStyle(Color.uberGray3)
+                Spacer()
+                Button(action: { showEditReminders = true }) {
+                    Text(activeReminders.isEmpty ? "Add" : "Edit")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.uberGreen)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(Color.uberGreen.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+
+            Divider().background(Color.uberBorder)
+
+            if activeReminders.isEmpty {
+                // No reminders set
+                Button(action: { showEditReminders = true }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "bell.slash")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.uberGray3)
+                            .frame(width: 18)
+                        Text("No reminders set — tap to add")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.uberGray3)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.uberGray3)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
+                }
+                .buttonStyle(.plain)
+            } else {
+                // Active reminders list
+                VStack(spacing: 0) {
+                    ForEach(Array(activeReminders.enumerated()), id: \.offset) { idx, item in
+                        if idx > 0 {
+                            Divider().background(Color.uberBorder).padding(.horizontal, 14)
+                        }
+                        HStack(spacing: 10) {
+                            Image(systemName: "bell.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.uberGreen)
+                                .frame(width: 18)
+                            Text(item)
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color.uberGray2)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                    }
+                }
+                .padding(.bottom, 4)
+            }
+        }
+        .background(Color.uberSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.uberBorder, lineWidth: 1))
+    }
+
+    private var activeReminders: [String] {
+        let config = spot.reminderConfig
+        var list: [String] = []
+        if config.beforeCleaningEnabled {
+            let mins = config.beforeCleaningMinutes
+            list.append(mins < 60 ? "\(mins) min before street cleaning" : "1 hr before street cleaning")
+        }
+        if config.eveningBeforeEnabled { list.append("Evening before at 9:00 PM") }
+        if config.morningOfEnabled     { list.append("Morning of cleaning at 7:00 AM") }
+        return list
     }
 
     // MARK: - Computed display strings
@@ -241,13 +318,9 @@ struct ParkedSummaryView: View {
     private func nextCleaningText(_ date: Date) -> String {
         let days = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
         let fmt = DateFormatter()
-        if days == 0 {
-            fmt.dateFormat = "'Today at' h:mm a"
-        } else if days == 1 {
-            fmt.dateFormat = "'Tomorrow at' h:mm a"
-        } else {
-            fmt.dateFormat = "EEE MMM d 'at' h:mm a"
-        }
+        if days == 0 { fmt.dateFormat = "'Today at' h:mm a" }
+        else if days == 1 { fmt.dateFormat = "'Tomorrow at' h:mm a" }
+        else { fmt.dateFormat = "EEE MMM d 'at' h:mm a" }
         return fmt.string(from: date)
     }
 }

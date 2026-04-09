@@ -67,7 +67,8 @@ struct ScoutBottomPanel: View {
                 }
 
                 // Side comparison — tap a card to save on that side
-                let sides: [SideDetector.StreetSide] = street.orientation == .eastWest ? [.north, .south] : [.east, .west]
+                let rawSides: [SideDetector.StreetSide] = street.orientation == .eastWest ? [.north, .south] : [.east, .west]
+                let sides = orderedSides(from: rawSides)
                 let displayEntries = nearbyEntries.isEmpty ? allEntries : nearbyEntries
                 let recommendedSide = recommendSide(sides: sides, entries: displayEntries)
                 Text("TAP THE SIDE YOU'RE PARKED ON")
@@ -75,13 +76,20 @@ struct ScoutBottomPanel: View {
                     .tracking(1.2)
                     .foregroundStyle(Color.uberGray3)
                 HStack(spacing: 10) {
-                    ForEach(sides, id: \.self) { side in
-                        sideSummaryCard(side: side, entries: displayEntries, isRecommended: side == recommendedSide)
-                            .onTapGesture {
+                    ForEach(Array(sides.enumerated()), id: \.element) { index, side in
+                        sideButton(
+                            side: side,
+                            relativeLabel: index == 0 ? "Left" : "Right",
+                            entries: displayEntries,
+                            isRecommended: side == recommendedSide,
+                            action: {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                 onSaveWithSide(side, allEntries, street)
                             }
+                        )
                     }
                 }
+                .animation(.spring(duration: 0.35), value: sides)
 
                 aspUpdatesSection
 
@@ -162,58 +170,79 @@ struct ScoutBottomPanel: View {
         )
     }
 
-    private func sideSummaryCard(side: SideDetector.StreetSide, entries: [StreetCleaningEntry], isRecommended: Bool) -> some View {
+    private func sideButton(
+        side: SideDetector.StreetSide,
+        relativeLabel: String,
+        entries: [StreetCleaningEntry],
+        isRecommended: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
         let sideEntries = entries.filter { $0.normalizedSide == side }
         let nextDate = sideEntries.compactMap { $0.nextCleaningDate() }.min()
         let daysUntil = nextDate.map { max(0, Calendar.current.dateComponents([.day], from: Date(), to: $0).day ?? 0) } ?? 99
         let isSoon = daysUntil < 2
         let accentColor: Color = isSoon ? Color.uberAmber : Color.uberGreen
 
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(side.compassLabel)
-                    .font(.system(size: 22, weight: .black))
-                    .foregroundStyle(accentColor)
-                Spacer()
-                if isRecommended {
-                    Text("BEST")
-                        .font(.system(size: 9, weight: .bold))
-                        .tracking(0.8)
-                        .foregroundStyle(Color.uberGreen)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(Color.uberGreen.opacity(0.15))
-                        .clipShape(Capsule())
+        return Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(relativeLabel)
+                        .font(.system(size: 28, weight: .black))
+                        .tracking(-1)
+                        .foregroundStyle(isRecommended ? accentColor : Color.uberWhite)
+                    Spacer()
+                    if isRecommended {
+                        Text("BEST")
+                            .font(.system(size: 9, weight: .bold))
+                            .tracking(0.8)
+                            .foregroundStyle(Color.uberGreen)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.uberGreen.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+                }
+                let rel = side.relativeLabel(facing: locationManager.heading)
+                Text(rel.map { "\($0) side (\(side.displayName))" } ?? "\(side.displayName) side")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.uberWhite)
+                if let entry = sideEntries.first {
+                    Text(entry.timeWindowDisplay)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.uberGray2)
+                    Text(entry.weekDay)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.uberGray3)
+                } else {
+                    Text("No schedule")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.uberGray3)
                 }
             }
-            Text(side.displayName + " side")
-                .font(.system(size: 11))
-                .foregroundStyle(Color.uberGray3)
-            if let entry = sideEntries.first {
-                Text(entry.timeWindowDisplay)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.uberGray2)
-                Text(entry.weekDay)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.uberGray3)
-            } else {
-                Text("No schedule")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.uberGray3)
-            }
+            .padding(.vertical, 20)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isRecommended ? Color.uberGreen.opacity(0.06) : Color.uberSurface2)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(
+                        isSoon ? Color.uberAmber.opacity(0.4) : (isRecommended ? Color.uberGreen.opacity(0.4) : Color.uberBorder),
+                        lineWidth: isRecommended ? 1.5 : 1
+                    )
+            )
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isRecommended ? Color.uberGreen.opacity(0.06) : Color.uberSurface2)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(
-                    isSoon ? Color.uberAmber.opacity(0.4) : (isRecommended ? Color.uberGreen.opacity(0.4) : Color.uberGreen.opacity(0.15)),
-                    lineWidth: isRecommended ? 1.5 : 1
-                )
-        )
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
+    }
+
+    /// Orders sides so the left side is always first (index 0) based on current heading.
+    private func orderedSides(from sides: [SideDetector.StreetSide]) -> [SideDetector.StreetSide] {
+        let h = locationManager.heading
+        guard h >= 0 else { return sides }
+        guard let left = sides.first(where: { $0.relativeLabel(facing: h) == "Left" }),
+              let right = sides.first(where: { $0 != left })
+        else { return sides }
+        return [left, right]
     }
 
     private func recommendSide(sides: [SideDetector.StreetSide], entries: [StreetCleaningEntry]) -> SideDetector.StreetSide {

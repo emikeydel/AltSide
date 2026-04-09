@@ -35,7 +35,7 @@ struct CountdownBlocksView: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                .strokeBorder(Color.uberBorder, lineWidth: 1)
         )
     }
 

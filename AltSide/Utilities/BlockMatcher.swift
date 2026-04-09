@@ -112,27 +112,30 @@ enum BlockMatcher {
         if blocks.count == 1 { return blocks[0] }
 
         let userLocation = CLLocation(latitude: userCoordinate.latitude, longitude: userCoordinate.longitude)
-        let hint = CLCircularRegion(center: userCoordinate, radius: 50_000, identifier: "nyc")
+        let hintRegion = MKCoordinateRegion(
+            center: userCoordinate,
+            latitudinalMeters: 100_000,
+            longitudinalMeters: 100_000
+        )
         var bestBlock: (from: String, to: String)? = nil
         var bestDistance = Double.infinity
 
         func tc(_ s: String) -> String { s.split(separator: " ").map { $0.capitalized }.joined(separator: " ") }
 
         for block in blocks {
-            // Try two query formats: full intersection then just the cross-street name.
-            // Use non-throwing continuation so a partial-result error doesn't discard valid placemarks.
             let queries = [
                 "\(tc(block.from)) and \(tc(streetName)), \(borough), NY",
                 "\(tc(block.from)), \(borough), NY",
             ]
             var loc: CLLocation? = nil
             for query in queries {
-                let placemarks = await withCheckedContinuation { (cont: CheckedContinuation<[CLPlacemark], Never>) in
-                    CLGeocoder().geocodeAddressString(query, in: hint) { results, _ in
-                        cont.resume(returning: results ?? [])
-                    }
+                let request = MKLocalSearch.Request()
+                request.naturalLanguageQuery = query
+                request.region = hintRegion
+                if let response = try? await MKLocalSearch(request: request).start(),
+                   let location = response.mapItems.first?.location {
+                    loc = location; break
                 }
-                if let l = placemarks.first?.location { loc = l; break }
             }
             if let l = loc {
                 let dist = userLocation.distance(from: l)

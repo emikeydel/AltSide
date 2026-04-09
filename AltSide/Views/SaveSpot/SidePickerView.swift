@@ -5,21 +5,33 @@ struct SidePickerView: View {
     let coordinate: CLLocationCoordinate2D
     let streetName: String
     let entries: [StreetCleaningEntry]
-    let heading: CLLocationDirection
+    var locationManager: LocationManager
     let streetOrientation: SideDetector.StreetOrientation
-    let onConfirm: (SideDetector.StreetSide) -> Void
+    let onConfirm: (SideDetector.StreetSide, [StreetCleaningEntry]) -> Void
 
     @State private var selectedSide: SideDetector.StreetSide = .north
     @State private var isAutoDetecting: Bool = false
     @Environment(\.dismiss) private var dismiss
 
-    private var northEntries: [StreetCleaningEntry] { entries.filter { $0.normalizedSide == .north } }
-    private var southEntries: [StreetCleaningEntry] { entries.filter { $0.normalizedSide == .south } }
-    private var eastEntries:  [StreetCleaningEntry] { entries.filter { $0.normalizedSide == .east  } }
-    private var westEntries:  [StreetCleaningEntry] { entries.filter { $0.normalizedSide == .west  } }
+    // MARK: - Side ordering
 
+    /// The two sides relevant to this street (N+S for E-W streets, E+W for avenues).
     private var primarySides: [SideDetector.StreetSide] {
         streetOrientation == .eastWest ? [.north, .south] : [.east, .west]
+    }
+
+    /// Always [leftSide, rightSide] so buttons match physical sides of the screen.
+    /// Reorders automatically when heading crosses the midpoint.
+    private var orderedSides: [SideDetector.StreetSide] {
+        let h = locationManager.heading
+        guard h >= 0 else { return primarySides }
+        // Find which primary side is to the left
+        let left = primarySides.first {
+            $0.relativeLabel(facing: h) == "Left"
+        }
+        guard let left else { return primarySides }
+        let right = primarySides.first { $0 != left }!
+        return [left, right]
     }
 
     var body: some View {
@@ -27,11 +39,7 @@ struct SidePickerView: View {
             Color.uberBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Drag handle
-                Capsule()
-                    .fill(Color.uberGray3.opacity(0.5))
-                    .frame(width: 36, height: 4)
-                    .padding(.top, 12)
+                CardHeader()
 
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 20) {
@@ -52,12 +60,14 @@ struct SidePickerView: View {
                         // Mini map
                         miniMap
 
-                        // Side buttons
+                        // Side buttons — left button is always the left side of the street
                         HStack(spacing: 10) {
-                            ForEach(primarySides, id: \.self) { side in
-                                sideButton(side)
+                            ForEach(orderedSides, id: \.self) { side in
+                                let index = orderedSides.firstIndex(of: side)!
+                                sideButton(side, relativeLabel: index == 0 ? "Left" : "Right")
                             }
                         }
+                        .animation(.spring(duration: 0.35), value: orderedSides)
 
                         // Auto-detect button
                         Button(action: autoDetect) {
@@ -81,7 +91,7 @@ struct SidePickerView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                                    .strokeBorder(Color.uberBorder, lineWidth: 1)
                             )
                         }
 
@@ -98,7 +108,7 @@ struct SidePickerView: View {
                         UberButton(
                             title: ctaTitle,
                             icon: "location.fill",
-                            action: { onConfirm(selectedSide) }
+                            action: { onConfirm(selectedSide, entries) }
                         )
                         .padding(.bottom, 8)
                     }
@@ -106,11 +116,13 @@ struct SidePickerView: View {
                 }
             }
         }
+        .sensoryFeedback(.selection, trigger: selectedSide)
+        .onAppear { autoDetect() }
     }
 
     // MARK: - Side Button
 
-    private func sideButton(_ side: SideDetector.StreetSide) -> some View {
+    private func sideButton(_ side: SideDetector.StreetSide, relativeLabel: String) -> some View {
         let isSelected = selectedSide == side
         let sideEntries = entriesFor(side)
         let isSoon = sideEntries.compactMap { $0.nextCleaningDate() }.min().map {
@@ -118,18 +130,18 @@ struct SidePickerView: View {
         } ?? false
 
         let accentColor: Color = isSoon ? Color.uberAmber : Color.uberGreen
-        let borderColor: Color = isSelected ? accentColor : Color.white.opacity(0.1)
-        let bgColor: Color = isSelected ? (isSoon ? Color.uberAmberDim : Color.uberGreenDim) : Color.uberSurface2
+        let borderColor: Color = isSelected ? accentColor : Color.uberBorder
+        let bgColor: Color     = isSelected ? (isSoon ? Color.uberAmberDim : Color.uberGreenDim) : Color.uberSurface2
 
         return Button(action: { withAnimation(.spring(duration: 0.25)) { selectedSide = side } }) {
-            VStack(spacing: 8) {
-                Text(side.compassLabel)
+            VStack(spacing: 6) {
+                Text(relativeLabel)
                     .font(.system(size: 28, weight: .black))
                     .tracking(-1)
-                    .foregroundStyle(isSelected ? accentColor : Color.uberGray2)
-                Text(side.displayName)
+                    .foregroundStyle(isSelected ? accentColor : Color.uberWhite)
+                Text(side.displayName + " side")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(isSelected ? Color.uberWhite : Color.uberGray3)
+                    .foregroundStyle(Color.uberWhite)
                 Text(side.addressParity)
                     .font(.system(size: 10))
                     .foregroundStyle(Color.uberGray3)
@@ -150,7 +162,9 @@ struct SidePickerView: View {
 
     private var miniMap: some View {
         ZStack {
-            Map(initialPosition: .camera(MapCamera(centerCoordinate: coordinate, distance: 120, heading: 0, pitch: 0))) {
+            Map(initialPosition: .camera(MapCamera(
+                centerCoordinate: coordinate, distance: 100, heading: 0, pitch: 0
+            ))) {
                 Annotation("", coordinate: sideCoordinate) {
                     ZStack {
                         Circle().fill(Color.uberGreen).frame(width: 28, height: 28)
@@ -159,18 +173,16 @@ struct SidePickerView: View {
                 }
             }
             .mapStyle(.standard)
-            .environment(\.colorScheme, .dark)
             .disabled(true)
-            .frame(height: 140)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
-            )
         }
+        .frame(height: 180)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.uberBorder, lineWidth: 1)
+        )
     }
 
-    /// Offset the car annotation slightly toward the selected side for visual feedback.
     private var sideCoordinate: CLLocationCoordinate2D {
         let offset = 0.00007
         switch selectedSide {
@@ -187,7 +199,10 @@ struct SidePickerView: View {
         isAutoDetecting = true
         Task {
             try? await Task.sleep(for: .seconds(1.2))
-            let detected = SideDetector.detectSide(heading: heading, orientation: streetOrientation)
+            let detected = SideDetector.detectSide(
+                heading: locationManager.heading,
+                orientation: streetOrientation
+            )
             withAnimation(.spring(duration: 0.3)) {
                 selectedSide = detected
             }

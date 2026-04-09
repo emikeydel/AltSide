@@ -7,11 +7,12 @@ struct SavedSpotView: View {
     let spot: ParkingSpot
     let onClear: () -> Void
     let onNavigate: () -> Void
+    var notificationManager: NotificationManager? = nil
 
     @State private var showShare = false
-    @State private var isClearing = false
     @State private var showParkAgainConfirm = false
     @State private var showWelcome = false
+    @State private var showEditReminders = false
 
     private var accentColor: Color {
         spot.isCleaningSoon ? Color.uberAmber : Color.uberGreen
@@ -21,45 +22,39 @@ struct SavedSpotView: View {
         ZStack {
             Color.uberBlack.ignoresSafeArea()
 
-            if isClearing {
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .tint(Color.uberGray2)
-                        .scaleEffect(1.2)
-                    Text("Finding your spot...")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.uberGray3)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+
+                    // Mini map
+                    miniMap
+
+                    // Status + street info + action icons inline
+                    parkedHeader
+
+                    // Countdown
+                    countdownSection
+
+                    // Reminders
+                    remindersCard
+
+                    // ASP updates
+                    aspUpdatesSection
+
+                    // Tip jar
+                    TipJarButton()
+
+                    // Primary CTA
+                    UberButton(
+                        title: "Park again",
+                        icon: "car.fill",
+                        style: .primary,
+                        action: { showParkAgainConfirm = true }
+                    )
+
+                    Spacer().frame(height: 20)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 24) {
-
-                        // Mini map
-                        miniMap
-
-                        // Status + street info + action icons inline
-                        parkedHeader
-
-                        // Countdown
-                        countdownSection
-
-                        // ASP updates
-                        aspUpdatesSection
-
-                        // Primary CTA
-                        UberButton(
-                            title: "Park again",
-                            icon: "car.fill",
-                            style: .primary,
-                            action: { showParkAgainConfirm = true }
-                        )
-
-                        Spacer().frame(height: 20)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 20)
-                }
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
             }
         }
         .sheet(isPresented: $showShare) {
@@ -70,9 +65,22 @@ struct SavedSpotView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showEditReminders) {
+            ReminderSetupView(
+                spot: spot,
+                onSave: {
+                    if let nm = notificationManager {
+                        Task { await nm.scheduleAlerts(for: spot) }
+                    }
+                    showEditReminders = false
+                },
+                onSkip: { showEditReminders = false }
+            )
+            .presentationDetents([.large])
+        }
         .alert("Park somewhere new?", isPresented: $showParkAgainConfirm) {
             Button("Remove spot & reminders", role: .destructive) {
-                isClearing = true
+                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
                 onClear()
             }
             Button("Cancel", role: .cancel) {}
@@ -112,7 +120,7 @@ struct SavedSpotView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                .strokeBorder(Color.uberBorder, lineWidth: 1)
         )
     }
 
@@ -155,7 +163,8 @@ struct SavedSpotView: View {
 
             VStack(spacing: 4) {
                 if let side = spot.streetSide {
-                    Text("\(side.displayName) side of the street")
+                    let rel = side.relativeLabel(facing: spot.parkingHeading)
+                    Text(rel.map { "\($0) side (\(side.displayName))" } ?? "\(side.displayName) side")
                         .font(.system(size: 15))
                         .foregroundStyle(Color.uberGray2)
                 }
@@ -196,17 +205,17 @@ struct SavedSpotView: View {
                         .scaleEffect(1.1)
                         .padding(.vertical, 4)
 
-                    HStack(spacing: 6) {
-                        Image(systemName: spot.isCleaningSoon ? "exclamationmark.triangle.fill" : "clock.badge.checkmark")
-                            .font(.system(size: 13))
+                    HStack(spacing: 8) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 14))
                         Text(spot.moveByDisplay)
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 15, weight: .bold))
                     }
-                    .foregroundStyle(accentColor)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(accentColor.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color(hex: "1A1A1A"))
+                    .clipShape(Capsule())
                 }
             } else {
                 HStack(spacing: 8) {
@@ -223,6 +232,90 @@ struct SavedSpotView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
+    }
+
+    // MARK: - Reminders Card
+
+    private var remindersCard: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("REMINDERS")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.5)
+                    .foregroundStyle(Color.uberGray3)
+                Spacer()
+                Button(action: { showEditReminders = true }) {
+                    Text(activeReminders.isEmpty ? "Add" : "Edit")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.uberGreen)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(Color.uberGreen.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+
+            Divider().background(Color.uberBorder)
+
+            if activeReminders.isEmpty {
+                Button(action: { showEditReminders = true }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "bell.slash")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.uberGray3)
+                            .frame(width: 18)
+                        Text("No reminders set — tap to add")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.uberGray3)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.uberGray3)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
+                }
+                .buttonStyle(.plain)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(activeReminders.enumerated()), id: \.offset) { idx, item in
+                        if idx > 0 {
+                            Divider().background(Color.uberBorder).padding(.horizontal, 14)
+                        }
+                        HStack(spacing: 10) {
+                            Image(systemName: "bell.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.uberGreen)
+                                .frame(width: 18)
+                            Text(item)
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color.uberGray2)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                    }
+                }
+                .padding(.bottom, 4)
+            }
+        }
+        .background(Color.uberSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.uberBorder, lineWidth: 1))
+    }
+
+    private var activeReminders: [String] {
+        let config = spot.reminderConfig
+        var list: [String] = []
+        if config.beforeCleaningEnabled {
+            let mins = config.beforeCleaningMinutes
+            list.append(mins < 60 ? "\(mins) min before street cleaning" : "1 hr before street cleaning")
+        }
+        if config.eveningBeforeEnabled { list.append("Evening before at 9:00 PM") }
+        if config.morningOfEnabled     { list.append("Morning of cleaning at 7:00 AM") }
+        return list
     }
 
     // MARK: - ASP Updates

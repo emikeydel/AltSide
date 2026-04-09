@@ -7,72 +7,72 @@ struct WelcomeView: View {
         ZStack {
             Color.uberBlack.ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 0) {
 
-                Spacer()
+                // Sweepy + wordmark
+                Image("SweepySplash")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(.horizontal, 40)
+                    .padding(.top, 40)
 
-                // Wordmark
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("AltSide")
-                        .font(.system(size: 48, weight: .black))
-                        .tracking(-1.5)
-                        .foregroundStyle(Color.uberWhite)
+                Spacer().frame(height: 20)
 
-                    Text("Never forget to move your car.")
-                        .font(.system(size: 20, weight: .semibold))
-                        .tracking(-0.3)
-                        .foregroundStyle(Color.uberGreen)
-                }
+                // Tagline
+                Text("Never forget to move your car.")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.uberWhite)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 28)
 
-                Spacer().frame(height: 32)
+                Spacer().frame(height: 12)
 
                 // Description
-                Text("AltSide tracks NYC alternate side parking schedules so you know exactly when street cleaning hits your block – and alerts you before the sweeper arrives or when rules are suspended.")
-                    .font(.system(size: 16))
+                Text("AltSide tracks NYC alternate side parking schedules so you know exactly when street cleaning hits your block. Set alerts before the sweeper arrives or when rules are suspended.")
+                    .font(.system(size: 15, design: .rounded))
                     .foregroundStyle(Color.uberGray2)
+                    .multilineTextAlignment(.center)
                     .lineSpacing(4)
+                    .padding(.horizontal, 28)
 
-                Spacer().frame(height: 36)
+                Spacer().frame(height: 28)
 
                 // Feature list
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(spacing: 12) {
                     featureRow(icon: "location.fill",
-                               color: Color.uberGreen,
                                text: "Save your spot with one tap")
                     featureRow(icon: "bell.fill",
-                               color: Color.uberAmber,
-                               text: "Get reminders before the sweeper comes")
+                               text: "Reminders before the sweeper comes")
                     featureRow(icon: "checkmark.shield.fill",
-                               color: Color.uberGreen,
-                               text: "See suspension updates when street cleaning is cancelled where you're parked")
+                               text: "Alerts when parking is suspended")
                     featureRow(icon: "dot.radiowaves.left.and.right",
-                               color: Color(hex: "5B8DEF"),
-                               text: "Scout nearby streets for the best side to park")
+                               text: "Find nearby streets with the best spots")
                 }
+                .padding(.horizontal, 28)
 
                 Spacer()
 
-                // CTA
-                UberButton(title: "Get started", action: onDismiss)
+                UberButton(title: "Let's go!", action: onDismiss)
+                    .padding(.horizontal, 28)
                     .padding(.bottom, 40)
             }
-            .padding(.horizontal, 28)
         }
     }
 
-    private func featureRow(icon: String, color: Color, text: String) -> some View {
+    private func featureRow(icon: String, text: String) -> some View {
         HStack(spacing: 14) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(color.opacity(0.15))
-                    .frame(width: 36, height: 36)
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(hex: "1A1A1A"))
+                    .frame(width: 38, height: 38)
                 Image(systemName: icon)
-                    .font(.system(size: 15))
-                    .foregroundStyle(color)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
             }
             Text(text)
-                .font(.system(size: 15))
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.uberGray2)
+            Spacer()
         }
     }
 }
