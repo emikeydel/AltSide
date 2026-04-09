@@ -468,6 +468,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_KEY_CFBundleDisplayName = Sweepy;
 				DEVELOPMENT_TEAM = 37AKZN7WU7;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AltSide detects when you disconnect from your car's Bluetooth to automatically prompt you to save your parking spot.";
@@ -505,6 +506,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_KEY_CFBundleDisplayName = Sweepy;
 				DEVELOPMENT_TEAM = 37AKZN7WU7;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AltSide detects when you disconnect from your car's Bluetooth to automatically prompt you to save your parking spot.";
