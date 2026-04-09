@@ -39,9 +39,7 @@ final class LiveActivityManager {
                 content: content,
                 pushType: nil
             )
-        } catch {
-            print("[LiveActivity] Failed to start: \(error.localizedDescription)")
-        }
+        } catch {}
     }
 
     // MARK: - Update

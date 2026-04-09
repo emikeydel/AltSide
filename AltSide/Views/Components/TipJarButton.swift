@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct TipJarButton: View {
-    // TODO: Replace with your actual tip jar URL (Ko-fi, Buy Me a Coffee, etc.)
     private let tipURL = URL(string: "https://ko-fi.com/altside")!
 
     var body: some View {
