@@ -28,7 +28,7 @@ struct WelcomeView: View {
                 Spacer().frame(height: 12)
 
                 // Description
-                Text("AltSide tracks NYC alternate side parking schedules so you know exactly when street cleaning hits your block. Set alerts before the sweeper arrives or when rules are suspended.")
+                Text("Sweepy tracks NYC alternate side parking schedules so you know exactly when street cleaning hits your block. Set alerts before the sweeper arrives or when rules are suspended.")
                     .font(.system(size: 15, design: .rounded))
                     .foregroundStyle(Color.uberGray2)
                     .multilineTextAlignment(.center)
@@ -54,6 +54,15 @@ struct WelcomeView: View {
 
                 UberButton(title: "Let's go!", action: onDismiss)
                     .padding(.horizontal, 28)
+
+                TipJarButton()
+                    .padding(.horizontal, 28)
+                    .padding(.top, 12)
+
+                Link("Questions? support@sweepy.site", destination: URL(string: "mailto:support@sweepy.site")!)
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(Color.uberGray3)
+                    .padding(.top, 12)
                     .padding(.bottom, 40)
             }
         }

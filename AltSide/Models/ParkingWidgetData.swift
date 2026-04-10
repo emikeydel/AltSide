@@ -13,8 +13,8 @@ struct ParkingWidgetData: Codable {
 
     // ── App Group ──────────────────────────────────────────────────────────
     // Must match the App Group identifier you enable in Signing & Capabilities
-    // for BOTH the AltSide and AltSideWidgetExtension targets.
-    static let appGroupID = "group.com.altside.parking"
+    // for BOTH the Sweepy and Sweepy Widget targets.
+    static let appGroupID = "group.com.laidoffdad.sweepy"
     static let key        = "parkingWidgetData"
 
     // MARK: - Persistence

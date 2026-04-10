@@ -3,7 +3,7 @@ import CoreLocation
 import Observation
 import OSLog
 
-private let log = Logger(subsystem: "LaidOffDad.AltSide", category: "CleaningData")
+private let log = Logger(subsystem: "com.laidoffdad.sweepy", category: "CleaningData")
 
 /// Fetches and caches NYC alternate side parking schedules on demand, one street at a time.
 ///

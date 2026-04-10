@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct TipJarButton: View {
-    private let tipURL = URL(string: "https://ko-fi.com/altside")!
+    private let tipURL = URL(string: "https://ko-fi.com/laidoffdadproductions")!
 
     var body: some View {
         Link(destination: tipURL) {
@@ -9,7 +9,7 @@ struct TipJarButton: View {
                 Text("☕")
                     .font(.system(size: 14))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Enjoying AltSide?")
+                    Text("Enjoying Sweepy?")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.uberWhite)
                     Text("Leave a tip to support the app")
