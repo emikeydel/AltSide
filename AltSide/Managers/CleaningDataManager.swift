@@ -124,6 +124,50 @@ final class CleaningDataManager {
         }
     }
 
+    // MARK: - Schedule filtering
+
+    /// Proximity filter: returns entries whose sign is within `thresholdFt` of `coordinate`.
+    /// Entries with no sign coordinates are excluded (they can't be placed).
+    static func proximityFiltered(
+        _ entries: [StreetCleaningEntry],
+        coordinate: CLLocationCoordinate2D,
+        thresholdFt: Double = 984
+    ) -> [StreetCleaningEntry] {
+        let (ux, uy) = wgs84ToStatePlane(lat: coordinate.latitude, lon: coordinate.longitude)
+        return entries.filter { e in
+            guard let sx = e.signXCoord, let sy = e.signYCoord else { return false }
+            return sqrt((sx - ux) * (sx - ux) + (sy - uy) * (sy - uy)) <= thresholdFt
+        }
+    }
+
+    /// For each (side, weekday) pair keeps only the sign physically closest to `coordinate`.
+    /// Eliminates entries from adjacent blocks that happen to share the same street name.
+    static func closestSignDedup(
+        _ entries: [StreetCleaningEntry],
+        coordinate: CLLocationCoordinate2D
+    ) -> [StreetCleaningEntry] {
+        let (ux, uy) = wgs84ToStatePlane(lat: coordinate.latitude, lon: coordinate.longitude)
+        var closest: [String: StreetCleaningEntry] = [:]
+        for entry in entries {
+            guard let side = entry.normalizedSide, let day = entry.weekdayInt else { continue }
+            let key = "\(side)_\(day)"
+            let dist: Double = {
+                guard let ex = entry.signXCoord, let ey = entry.signYCoord else { return .infinity }
+                return sqrt((ex - ux) * (ex - ux) + (ey - uy) * (ey - uy))
+            }()
+            if let existing = closest[key] {
+                let exDist: Double = {
+                    guard let ex = existing.signXCoord, let ey = existing.signYCoord else { return .infinity }
+                    return sqrt((ex - ux) * (ex - ux) + (ey - uy) * (ey - uy))
+                }()
+                if dist < exDist { closest[key] = entry }
+            } else {
+                closest[key] = entry
+            }
+        }
+        return Array(closest.values)
+    }
+
     // MARK: - Coordinate conversion
 
     /// Approximate WGS84 → EPSG:2263 (NY State Plane Long Island, US survey feet).

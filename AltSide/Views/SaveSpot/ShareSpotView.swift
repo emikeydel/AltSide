@@ -19,12 +19,12 @@ struct ShareSpotView: View {
 
     var body: some View {
         ZStack {
-            Color.uberBlack.ignoresSafeArea()
+            Color.sweepyBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Drag handle
                 Capsule()
-                    .fill(Color.uberGray3.opacity(0.4))
+                    .fill(Color.sweepyGray3.opacity(0.4))
                     .frame(width: 36, height: 4)
                     .padding(.top, 12)
                     .padding(.bottom, 4)
@@ -45,11 +45,11 @@ struct ShareSpotView: View {
                             Text("SHARE YOUR SPOT")
                                 .font(.system(size: 10, weight: .bold))
                                 .tracking(1.5)
-                                .foregroundStyle(Color.uberGray3)
+                                .foregroundStyle(Color.sweepyGray3)
                             Text("Let someone know\nwhere you parked")
                                 .font(.system(size: 26, weight: .black))
                                 .tracking(-0.8)
-                                .foregroundStyle(Color.uberWhite)
+                                .foregroundStyle(Color.sweepyWhite)
                         }
 
                         // Recipient section
@@ -61,7 +61,7 @@ struct ShareSpotView: View {
                         // Actions
                         VStack(spacing: 10) {
                             if canSendText {
-                                UberButton(
+                                SweepyButton(
                                     title: selectedName != nil ? "Send to \(selectedName!)" : "Send via iMessage",
                                     icon: "message.fill",
                                     action: { showMessageCompose = true }
@@ -71,7 +71,7 @@ struct ShareSpotView: View {
                             Button(action: onDone) {
                                 Text("Skip")
                                     .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color.uberGray3)
+                                    .foregroundStyle(Color.sweepyGray3)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
                             }
@@ -112,39 +112,39 @@ struct ShareSpotView: View {
             VStack(spacing: 8) {
                 HStack(spacing: 12) {
                     ZStack {
-                        Circle().fill(Color.uberGreen.opacity(0.15)).frame(width: 36, height: 36)
+                        Circle().fill(Color.sweepyGreen.opacity(0.15)).frame(width: 36, height: 36)
                         Text(name.prefix(1).uppercased())
                             .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(Color.uberGreen)
+                            .foregroundStyle(Color.sweepyGreen)
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(name)
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.uberWhite)
+                            .foregroundStyle(Color.sweepyWhite)
                         if hasLastContact && name == lastShareContactName {
                             Text("Recent")
                                 .font(.system(size: 11))
-                                .foregroundStyle(Color.uberGray3)
+                                .foregroundStyle(Color.sweepyGray3)
                         }
                     }
                     Spacer()
                     Button(action: { showContactPicker = true }) {
                         Text("Change")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color.uberGray2)
+                            .foregroundStyle(Color.sweepyGray2)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
-                            .background(Color.uberSurface2)
+                            .background(Color.sweepySurface2)
                             .clipShape(Capsule())
                     }
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
-                .background(Color.uberSurface)
+                .background(Color.sweepySurface)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(Color.uberGreen.opacity(0.3), lineWidth: 1)
+                        .strokeBorder(Color.sweepyGreen.opacity(0.3), lineWidth: 1)
                 )
             }
         } else {
@@ -152,26 +152,26 @@ struct ShareSpotView: View {
             Button(action: { showContactPicker = true }) {
                 HStack(spacing: 12) {
                     ZStack {
-                        Circle().fill(Color.uberSurface2).frame(width: 36, height: 36)
+                        Circle().fill(Color.sweepySurface2).frame(width: 36, height: 36)
                         Image(systemName: "person.fill.badge.plus")
                             .font(.system(size: 14))
-                            .foregroundStyle(Color.uberGray2)
+                            .foregroundStyle(Color.sweepyGray2)
                     }
                     Text("Choose who to send to")
                         .font(.system(size: 14))
-                        .foregroundStyle(Color.uberGray2)
+                        .foregroundStyle(Color.sweepyGray2)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12))
-                        .foregroundStyle(Color.uberGray3)
+                        .foregroundStyle(Color.sweepyGray3)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
-                .background(Color.uberSurface)
+                .background(Color.sweepySurface)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(Color.uberBorder, lineWidth: 1)
+                        .strokeBorder(Color.sweepyBorder, lineWidth: 1)
                 )
             }
             .buttonStyle(.plain)
@@ -220,15 +220,15 @@ struct ShareSpotView: View {
             HStack {
                 Text("iMessage")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.uberGray3)
+                    .foregroundStyle(Color.sweepyGray3)
                 Spacer()
                 Image(systemName: "bubble.left.fill")
                     .font(.system(size: 11))
-                    .foregroundStyle(Color.uberGray3)
+                    .foregroundStyle(Color.sweepyGray3)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(Color.uberSurface3)
+            .background(Color.sweepySurface3)
 
             // Bubble row with Sweepy avatar
             HStack(alignment: .bottom, spacing: 8) {
@@ -237,7 +237,7 @@ struct ShareSpotView: View {
                     messageBubble
                     Text("Delivered")
                         .font(.system(size: 10))
-                        .foregroundStyle(Color.uberGray3)
+                        .foregroundStyle(Color.sweepyGray3)
                 }
                 Image("Sweepy")
                     .resizable()
@@ -246,11 +246,11 @@ struct ShareSpotView: View {
             }
             .padding(14)
         }
-        .background(Color.uberSurface)
+        .background(Color.sweepySurface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.uberBorder, lineWidth: 1)
+                .strokeBorder(Color.sweepyBorder, lineWidth: 1)
         )
     }
 

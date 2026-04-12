@@ -19,7 +19,7 @@ struct OutsideNYCView: View {
 
     var body: some View {
         ZStack {
-            Color.uberBlack.ignoresSafeArea()
+            Color.sweepyBlack.ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
@@ -35,10 +35,10 @@ struct OutsideNYCView: View {
                     VStack(spacing: 4) {
                         Text("Oh no!")
                             .font(.system(size: 30, weight: .black))
-                            .foregroundStyle(Color.uberGreen)
+                            .foregroundStyle(Color.sweepyGreen)
                         Text("Outside Service Area")
                             .font(.system(size: 30, weight: .black))
-                            .foregroundStyle(Color.uberGreen)
+                            .foregroundStyle(Color.sweepyGreen)
                     }
                     .multilineTextAlignment(.center)
                     .padding(.top, 16)
@@ -49,12 +49,12 @@ struct OutsideNYCView: View {
                         HStack(spacing: 10) {
                             Image(systemName: "magnifyingglass")
                                 .font(.system(size: 14))
-                                .foregroundStyle(Color.uberGray3)
+                                .foregroundStyle(Color.sweepyGray3)
 
                             TextField("Street, neighborhood, or landmark…", text: $searchText)
                                 .font(.system(size: 15))
-                                .foregroundStyle(Color.uberWhite)
-                                .tint(Color.uberGreen)
+                                .foregroundStyle(Color.sweepyWhite)
+                                .tint(Color.sweepyGreen)
                                 .focused($fieldFocused)
                                 .submitLabel(.search)
                                 .onSubmit { search() }
@@ -67,22 +67,22 @@ struct OutsideNYCView: View {
                                 }) {
                                     Image(systemName: "xmark.circle.fill")
                                         .font(.system(size: 14))
-                                        .foregroundStyle(Color.uberGray3)
+                                        .foregroundStyle(Color.sweepyGray3)
                                 }
                             }
 
                             if isSearching {
                                 ProgressView()
                                     .scaleEffect(0.75)
-                                    .tint(Color.uberGray3)
+                                    .tint(Color.sweepyGray3)
                             }
                         }
                         .padding(14)
-                        .background(Color.uberSurface)
+                        .background(Color.sweepySurface)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
-                                .strokeBorder(fieldFocused ? Color.uberGreen.opacity(0.5) : Color.uberBorder, lineWidth: 1)
+                                .strokeBorder(fieldFocused ? Color.sweepyGreen.opacity(0.5) : Color.sweepyBorder, lineWidth: 1)
                         )
                         .onChange(of: searchText) { _, text in
                             searchError = nil
@@ -98,7 +98,7 @@ struct OutsideNYCView: View {
                                 Text(error)
                                     .font(.system(size: 12))
                             }
-                            .foregroundStyle(Color.uberAmber)
+                            .foregroundStyle(Color.sweepyAmber)
                         }
                     }
                     .padding(.horizontal, 24)
@@ -111,11 +111,11 @@ struct OutsideNYCView: View {
                                 resultRow(item)
                             }
                         }
-                        .background(Color.uberSurface)
+                        .background(Color.sweepySurface)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(Color.uberBorder, lineWidth: 1)
+                                .strokeBorder(Color.sweepyBorder, lineWidth: 1)
                         )
                         .padding(.horizontal, 24)
                         .padding(.top, 8)
@@ -151,21 +151,21 @@ struct OutsideNYCView: View {
             HStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .fill(inNYC ? Color.uberGreen.opacity(0.12) : Color.uberAmber.opacity(0.1))
+                        .fill(inNYC ? Color.sweepyGreen.opacity(0.12) : Color.sweepyAmber.opacity(0.1))
                         .frame(width: 34, height: 34)
                     Image(systemName: inNYC ? "mappin.circle.fill" : "xmark.circle.fill")
                         .font(.system(size: 16))
-                        .foregroundStyle(inNYC ? Color.uberGreen : Color.uberAmber)
+                        .foregroundStyle(inNYC ? Color.sweepyGreen : Color.sweepyAmber)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.name ?? "Unknown")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(inNYC ? Color.uberWhite : Color.uberGray3)
+                        .foregroundStyle(inNYC ? Color.sweepyWhite : Color.sweepyGray3)
                     if let addr = item.address?.shortAddress {
                         Text(addr)
                             .font(.system(size: 12))
-                            .foregroundStyle(Color.uberGray3)
+                            .foregroundStyle(Color.sweepyGray3)
                     }
                 }
 
@@ -175,10 +175,10 @@ struct OutsideNYCView: View {
                     Text(borough)
                         .font(.system(size: 10, weight: .bold))
                         .tracking(0.5)
-                        .foregroundStyle(Color.uberGreen)
+                        .foregroundStyle(Color.sweepyGreen)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Color.uberGreen.opacity(0.12))
+                        .background(Color.sweepyGreen.opacity(0.12))
                         .clipShape(Capsule())
                 }
             }

@@ -5,13 +5,14 @@ struct ReminderSetupView: View {
     let spot: ParkingSpot
     let onSave: () -> Void
     let onSkip: () -> Void
+    let onCancel: () -> Void
 
     @State private var config: ReminderConfig = ReminderConfig()
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         ZStack {
-            Color.uberBlack.ignoresSafeArea()
+            Color.sweepyBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 CardHeader()
@@ -26,7 +27,7 @@ struct ReminderSetupView: View {
                         Text("SET YOUR REMINDERS")
                             .font(.system(size: 10, weight: .bold))
                             .tracking(1.5)
-                            .foregroundStyle(Color.uberGray3)
+                            .foregroundStyle(Color.sweepyGray3)
 
                         // Reminder options
                         VStack(spacing: 1) {
@@ -36,15 +37,15 @@ struct ReminderSetupView: View {
                             divider
                             morningOfRow
                         }
-                        .background(Color.uberSurface)
+                        .background(Color.sweepySurface)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(Color.uberBorder, lineWidth: 1)
+                                .strokeBorder(Color.sweepyBorder, lineWidth: 1)
                         )
 
                         // CTAs
-                        UberButton(title: "Save spot & confirm", action: {
+                        SweepyButton(title: "Save spot & confirm", action: {
                             spot.reminderConfig = config
                             onSave()
                         })
@@ -52,7 +53,15 @@ struct ReminderSetupView: View {
                         Button(action: onSkip) {
                             Text("Skip reminders")
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color.uberGray3)
+                                .foregroundStyle(Color.sweepyGray3)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                        }
+
+                        Button(action: onCancel) {
+                            Label("Cancel — go back", systemImage: "arrow.uturn.left")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.sweepyAmber)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
                         }
@@ -78,15 +87,15 @@ struct ReminderSetupView: View {
     private var spotSummaryBar: some View {
         HStack(spacing: 12) {
             ZStack {
-                Circle().fill(Color.uberGreen.opacity(0.15)).frame(width: 36, height: 36)
+                Circle().fill(Color.sweepyGreen.opacity(0.15)).frame(width: 36, height: 36)
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 20))
-                    .foregroundStyle(Color.uberGreen)
+                    .foregroundStyle(Color.sweepyGreen)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(spot.streetName)
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Color.uberWhite)
+                    .foregroundStyle(Color.sweepyWhite)
                 if let side = spot.streetSide {
                     HStack(spacing: 4) {
                         let rel = side.relativeLabel(facing: spot.parkingHeading)
@@ -94,21 +103,21 @@ struct ReminderSetupView: View {
                         if spot.nextCleaningDate != nil {
                             Text("·")
                             Text(spot.moveByDisplay)
-                                .foregroundStyle(spot.isCleaningSoon ? Color.uberAmber : Color.uberGreen)
+                                .foregroundStyle(spot.isCleaningSoon ? Color.sweepyAmber : Color.sweepyGreen)
                         }
                     }
                     .font(.system(size: 12))
-                    .foregroundStyle(Color.uberGray2)
+                    .foregroundStyle(Color.sweepyGray2)
                 }
             }
             Spacer()
         }
         .padding(14)
-        .background(Color.uberSurface)
+        .background(Color.sweepySurface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.uberGreen.opacity(0.3), lineWidth: 1)
+                .strokeBorder(Color.sweepyGreen.opacity(0.3), lineWidth: 1)
         )
     }
 
@@ -135,10 +144,10 @@ struct ReminderSetupView: View {
                 Button(action: { config.beforeCleaningMinutes = mins }) {
                     Text(mins < 60 ? "\(mins)m" : "\(mins/60)h")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(config.beforeCleaningMinutes == mins ? .black : Color.uberGray2)
+                        .foregroundStyle(config.beforeCleaningMinutes == mins ? .black : Color.sweepyGray2)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 7)
-                        .background(config.beforeCleaningMinutes == mins ? Color.uberGreen : Color.uberSurface3)
+                        .background(config.beforeCleaningMinutes == mins ? Color.sweepyGreen : Color.sweepySurface3)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
             }
@@ -166,14 +175,14 @@ struct ReminderSetupView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.uberWhite)
+                    .foregroundStyle(Color.sweepyWhite)
                 Text(subtitle)
                     .font(.system(size: 12))
-                    .foregroundStyle(Color.uberGray3)
+                    .foregroundStyle(Color.sweepyGray3)
             }
             Spacer()
             Toggle("", isOn: isOn)
-                .tint(Color.uberGreen)
+                .tint(Color.sweepyGreen)
                 .labelsHidden()
         }
         .padding(.horizontal, 16)
@@ -182,7 +191,7 @@ struct ReminderSetupView: View {
 
     private var divider: some View {
         Divider()
-            .background(Color.uberBorder)
+            .background(Color.sweepyBorder)
             .padding(.horizontal, 16)
     }
 }

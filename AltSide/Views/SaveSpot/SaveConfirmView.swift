@@ -5,6 +5,7 @@ struct SaveConfirmView: View {
     let onSetReminders: () -> Void
     let onShare: () -> Void
     let onDone: () -> Void
+    let onCancel: () -> Void
 
     @State private var sweepyScale: CGFloat = 0.3
     @State private var sweepyOpacity: Double = 0
@@ -12,7 +13,7 @@ struct SaveConfirmView: View {
 
     var body: some View {
         ZStack {
-            Color.uberBlack.ignoresSafeArea()
+            Color.sweepyBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 CardHeader()
@@ -33,15 +34,15 @@ struct SaveConfirmView: View {
                             Text("Spot saved!")
                                 .font(.system(size: 28, weight: .black))
                                 .tracking(-0.8)
-                                .foregroundStyle(Color.uberWhite)
+                                .foregroundStyle(Color.sweepyWhite)
                             Text(spot.streetName)
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.uberGreen)
+                                .foregroundStyle(Color.sweepyGreen)
                             if let side = spot.streetSide {
                                 let rel = side.relativeLabel(facing: spot.parkingHeading)
                                 Text(rel.map { "\($0) side (\(side.displayName))" } ?? "\(side.displayName) side")
                                     .font(.system(size: 13))
-                                    .foregroundStyle(Color.uberGray2)
+                                    .foregroundStyle(Color.sweepyGray2)
                             }
                         }
 
@@ -50,12 +51,12 @@ struct SaveConfirmView: View {
 
                         // Actions
                         VStack(spacing: 10) {
-                            UberButton(
+                            SweepyButton(
                                 title: "Set reminders",
                                 icon: "bell.badge.fill",
                                 action: onSetReminders
                             )
-                            UberButton(
+                            SweepyButton(
                                 title: "Share with someone",
                                 icon: "square.and.arrow.up",
                                 style: .secondary,
@@ -64,7 +65,14 @@ struct SaveConfirmView: View {
                             Button(action: onDone) {
                                 Text("Done")
                                     .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color.uberGray3)
+                                    .foregroundStyle(Color.sweepyGray3)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                            }
+                            Button(action: onCancel) {
+                                Label("Cancel — go back", systemImage: "arrow.uturn.left")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Color.sweepyAmber)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
                             }
@@ -97,40 +105,40 @@ struct SaveConfirmView: View {
                     icon: "calendar.badge.clock",
                     label: "Next cleaning",
                     value: nextCleaningText(next),
-                    valueColor: spot.isCleaningSoon ? Color.uberAmber : Color.uberWhite
+                    valueColor: spot.isCleaningSoon ? Color.sweepyAmber : Color.sweepyWhite
                 )
-                Divider().background(Color.uberBorder)
+                Divider().background(Color.sweepyBorder)
                 infoRow(
                     icon: "clock.arrow.circlepath",
                     label: "Move by",
                     value: spot.moveByDisplay.replacingOccurrences(of: "Move by ", with: ""),
-                    valueColor: spot.isCleaningSoon ? Color.uberAmber : Color.uberGreen
+                    valueColor: spot.isCleaningSoon ? Color.sweepyAmber : Color.sweepyGreen
                 )
             } else {
                 infoRow(
                     icon: "calendar.badge.exclamationmark",
                     label: "Schedule",
                     value: "No data found",
-                    valueColor: Color.uberGray3
+                    valueColor: Color.sweepyGray3
                 )
             }
 
             if !spot.crossStreetFrom.isEmpty || !spot.crossStreetTo.isEmpty {
-                Divider().background(Color.uberBorder)
+                Divider().background(Color.sweepyBorder)
                 infoRow(
                     icon: "arrow.left.and.right",
                     label: "Between",
                     value: "\(spot.crossStreetFrom) & \(spot.crossStreetTo)",
-                    valueColor: Color.uberGray2
+                    valueColor: Color.sweepyGray2
                 )
             }
         }
         .padding(16)
-        .background(Color.uberSurface)
+        .background(Color.sweepySurface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.uberGreen.opacity(0.25), lineWidth: 1)
+                .strokeBorder(Color.sweepyGreen.opacity(0.25), lineWidth: 1)
         )
     }
 
@@ -138,11 +146,11 @@ struct SaveConfirmView: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 14))
-                .foregroundStyle(Color.uberGray3)
+                .foregroundStyle(Color.sweepyGray3)
                 .frame(width: 20)
             Text(label)
                 .font(.system(size: 13))
-                .foregroundStyle(Color.uberGray2)
+                .foregroundStyle(Color.sweepyGray2)
             Spacer()
             Text(value)
                 .font(.system(size: 13, weight: .semibold))

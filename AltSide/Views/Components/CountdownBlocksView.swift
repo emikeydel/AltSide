@@ -3,7 +3,7 @@ import Combine
 
 struct CountdownBlocksView: View {
     let timeInterval: TimeInterval
-    var accentColor: Color = .uberAmber
+    var accentColor: Color = .sweepyAmber
 
     private var days: Int    { max(0, Int(timeInterval) / 86400) }
     private var hours: Int   { max(0, (Int(timeInterval) % 86400) / 3600) }
@@ -28,21 +28,21 @@ struct CountdownBlocksView: View {
             Text(label)
                 .font(.system(size: 8, weight: .bold))
                 .tracking(1.2)
-                .foregroundStyle(Color.uberGray3)
+                .foregroundStyle(Color.sweepyGray3)
         }
         .frame(width: 72, height: 64)
-        .background(Color.uberSurface)
+        .background(Color.sweepySurface)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Color.uberBorder, lineWidth: 1)
+                .strokeBorder(Color.sweepyBorder, lineWidth: 1)
         )
     }
 
     private var separator: some View {
         Text(":")
             .font(.system(size: 22, weight: .black))
-            .foregroundStyle(Color.uberGray3)
+            .foregroundStyle(Color.sweepyGray3)
             .offset(y: -6)
     }
 }
@@ -50,7 +50,7 @@ struct CountdownBlocksView: View {
 /// Auto-updating countdown that ticks every second.
 struct LiveCountdownBlocksView: View {
     let targetDate: Date
-    var accentColor: Color = .uberAmber
+    var accentColor: Color = .sweepyAmber
 
     @State private var timeRemaining: TimeInterval = 0
 

@@ -15,12 +15,12 @@ struct SavedSpotView: View {
     @State private var showEditReminders = false
 
     private var accentColor: Color {
-        spot.isCleaningSoon ? Color.uberAmber : Color.uberGreen
+        spot.isCleaningSoon ? Color.sweepyAmber : Color.sweepyGreen
     }
 
     var body: some View {
         ZStack {
-            Color.uberBlack.ignoresSafeArea()
+            Color.sweepyBlack.ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
@@ -44,7 +44,7 @@ struct SavedSpotView: View {
                     TipJarButton()
 
                     // Primary CTA
-                    UberButton(
+                    SweepyButton(
                         title: "Park again",
                         icon: "car.fill",
                         style: .primary,
@@ -70,11 +70,12 @@ struct SavedSpotView: View {
                 spot: spot,
                 onSave: {
                     if let nm = notificationManager {
-                        Task { await nm.scheduleAlerts(for: spot) }
+                        Task { @MainActor in await nm.scheduleAlerts(for: spot) }
                     }
                     showEditReminders = false
                 },
-                onSkip: { showEditReminders = false }
+                onSkip: { showEditReminders = false },
+                onCancel: { showEditReminders = false }
             )
             .presentationDetents([.large])
         }
@@ -102,16 +103,16 @@ struct SavedSpotView: View {
             Annotation("", coordinate: spot.coordinate) {
                 ZStack {
                     Circle()
-                        .fill(Color.uberRed.opacity(0.2))
+                        .fill(Color.sweepyRed.opacity(0.2))
                         .frame(width: 40, height: 40)
                     Circle()
-                        .fill(Color.uberRed)
+                        .fill(Color.sweepyRed)
                         .frame(width: 28, height: 28)
                     Image(systemName: "car.fill")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                 }
-                .shadow(color: Color.uberRed.opacity(0.5), radius: 6)
+                .shadow(color: Color.sweepyRed.opacity(0.5), radius: 6)
             }
         }
         .mapStyle(.standard)
@@ -120,7 +121,7 @@ struct SavedSpotView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Color.uberBorder, lineWidth: 1)
+                .strokeBorder(Color.sweepyBorder, lineWidth: 1)
         )
     }
 
@@ -157,7 +158,7 @@ struct SavedSpotView: View {
             Text(spot.streetName)
                 .font(.system(size: 34, weight: .black))
                 .tracking(-1)
-                .foregroundStyle(Color.uberWhite)
+                .foregroundStyle(Color.sweepyWhite)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
 
@@ -166,12 +167,12 @@ struct SavedSpotView: View {
                     let rel = side.relativeLabel(facing: spot.parkingHeading)
                     Text(rel.map { "\($0) side (\(side.displayName))" } ?? "\(side.displayName) side")
                         .font(.system(size: 15))
-                        .foregroundStyle(Color.uberGray2)
+                        .foregroundStyle(Color.sweepyGray2)
                 }
                 if !spot.crossStreetFrom.isEmpty && !spot.crossStreetTo.isEmpty {
                     Text("between \(spot.crossStreetFrom) & \(spot.crossStreetTo)")
                         .font(.system(size: 13))
-                        .foregroundStyle(Color.uberGray3)
+                        .foregroundStyle(Color.sweepyGray3)
                 }
             }
         }
@@ -181,11 +182,11 @@ struct SavedSpotView: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(Color.uberSurface2)
+                    .fill(Color.sweepySurface2)
                     .frame(width: 36, height: 36)
                 Image(systemName: systemName)
                     .font(.system(size: 15))
-                    .foregroundStyle(Color.uberGray2)
+                    .foregroundStyle(Color.sweepyGray2)
             }
         }
     }
@@ -199,7 +200,7 @@ struct SavedSpotView: View {
                     Text("TIME UNTIL YOU MUST MOVE")
                         .font(.system(size: 10, weight: .bold))
                         .tracking(1.5)
-                        .foregroundStyle(Color.uberGray3)
+                        .foregroundStyle(Color.sweepyGray3)
 
                     LiveCountdownBlocksView(targetDate: next, accentColor: accentColor)
                         .scaleEffect(1.1)
@@ -221,14 +222,14 @@ struct SavedSpotView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "calendar.badge.exclamationmark")
                         .font(.system(size: 16))
-                        .foregroundStyle(Color.uberGray3)
+                        .foregroundStyle(Color.sweepyGray3)
                     Text("No cleaning schedule found for this block")
                         .font(.system(size: 13))
-                        .foregroundStyle(Color.uberGray3)
+                        .foregroundStyle(Color.sweepyGray3)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity)
-                .background(Color.uberSurface)
+                .background(Color.sweepySurface)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
@@ -242,37 +243,37 @@ struct SavedSpotView: View {
                 Text("REMINDERS")
                     .font(.system(size: 10, weight: .bold))
                     .tracking(1.5)
-                    .foregroundStyle(Color.uberGray3)
+                    .foregroundStyle(Color.sweepyGray3)
                 Spacer()
                 Button(action: { showEditReminders = true }) {
                     Text(activeReminders.isEmpty ? "Add" : "Edit")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.uberGreen)
+                        .foregroundStyle(Color.sweepyGreen)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 5)
-                        .background(Color.uberGreen.opacity(0.12))
+                        .background(Color.sweepyGreen.opacity(0.12))
                         .clipShape(Capsule())
                 }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
 
-            Divider().background(Color.uberBorder)
+            Divider().background(Color.sweepyBorder)
 
             if activeReminders.isEmpty {
                 Button(action: { showEditReminders = true }) {
                     HStack(spacing: 10) {
                         Image(systemName: "bell.slash")
                             .font(.system(size: 14))
-                            .foregroundStyle(Color.uberGray3)
+                            .foregroundStyle(Color.sweepyGray3)
                             .frame(width: 18)
                         Text("No reminders set — tap to add")
                             .font(.system(size: 13))
-                            .foregroundStyle(Color.uberGray3)
+                            .foregroundStyle(Color.sweepyGray3)
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.system(size: 11))
-                            .foregroundStyle(Color.uberGray3)
+                            .foregroundStyle(Color.sweepyGray3)
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 14)
@@ -282,16 +283,16 @@ struct SavedSpotView: View {
                 VStack(spacing: 0) {
                     ForEach(Array(activeReminders.enumerated()), id: \.offset) { idx, item in
                         if idx > 0 {
-                            Divider().background(Color.uberBorder).padding(.horizontal, 14)
+                            Divider().background(Color.sweepyBorder).padding(.horizontal, 14)
                         }
                         HStack(spacing: 10) {
                             Image(systemName: "bell.fill")
                                 .font(.system(size: 12))
-                                .foregroundStyle(Color.uberGreen)
+                                .foregroundStyle(Color.sweepyGreen)
                                 .frame(width: 18)
                             Text(item)
                                 .font(.system(size: 13))
-                                .foregroundStyle(Color.uberGray2)
+                                .foregroundStyle(Color.sweepyGray2)
                             Spacer()
                         }
                         .padding(.horizontal, 14)
@@ -301,9 +302,9 @@ struct SavedSpotView: View {
                 .padding(.bottom, 4)
             }
         }
-        .background(Color.uberSurface)
+        .background(Color.sweepySurface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.uberBorder, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.sweepyBorder, lineWidth: 1))
     }
 
     private var activeReminders: [String] {
@@ -326,25 +327,25 @@ struct SavedSpotView: View {
             Text("STREET CLEANING UPDATES")
                 .font(.system(size: 10, weight: .bold))
                 .tracking(1.5)
-                .foregroundStyle(Color.uberGray3)
+                .foregroundStyle(Color.sweepyGray3)
 
             if let todayHoliday = ASPSuspensionCalendar.holidayName(on: Date()) {
-                updateRow(icon: "checkmark.shield.fill", iconColor: .uberGreen,
-                          title: "Suspended today", subtitle: todayHoliday, accent: .uberGreen)
+                updateRow(icon: "checkmark.shield.fill", iconColor: .sweepyGreen,
+                          title: "Suspended today", subtitle: todayHoliday, accent: .sweepyGreen)
             } else if let next = spot.nextCleaningDate,
                       let holiday = ASPSuspensionCalendar.holidayName(on: next) {
-                updateRow(icon: "checkmark.shield.fill", iconColor: .uberGreen,
-                          title: "Next cleaning suspended", subtitle: "\(holiday) — no need to move", accent: .uberGreen)
+                updateRow(icon: "checkmark.shield.fill", iconColor: .sweepyGreen,
+                          title: "Next cleaning suspended", subtitle: "\(holiday) — no need to move", accent: .sweepyGreen)
             } else {
-                updateRow(icon: "checkmark.circle.fill", iconColor: .uberGray3,
-                          title: "ASP in effect", subtitle: "Normal street cleaning schedule applies", accent: .uberGray3)
+                updateRow(icon: "checkmark.circle.fill", iconColor: .sweepyGray3,
+                          title: "ASP in effect", subtitle: "Normal street cleaning schedule applies", accent: .sweepyGray3)
             }
 
             if let upcoming = ASPSuspensionCalendar.nextSuspension(after: Date()) {
-                updateRow(icon: "calendar", iconColor: .uberGray2,
+                updateRow(icon: "calendar", iconColor: .sweepyGray2,
                           title: "Next suspension",
                           subtitle: formattedDate(upcoming.date) + " · " + upcoming.holiday,
-                          accent: .uberGray2)
+                          accent: .sweepyGray2)
             }
         }
     }
@@ -364,16 +365,16 @@ struct SavedSpotView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.uberWhite)
+                    .foregroundStyle(Color.sweepyWhite)
                 Text(subtitle)
                     .font(.system(size: 12))
-                    .foregroundStyle(Color.uberGray3)
+                    .foregroundStyle(Color.sweepyGray3)
             }
             Spacer()
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color.uberSurface2)
+        .background(Color.sweepySurface2)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)

@@ -59,22 +59,22 @@ struct CleaningBadge: View {
 
     private var foregroundColor: Color {
         switch state {
-        case .cleaningSoon, .activeNow: return .uberAmber
-        case .safe, .suspended:         return .uberGreen
+        case .cleaningSoon, .activeNow: return .sweepyAmber
+        case .safe, .suspended:         return .sweepyGreen
         }
     }
 
     private var backgroundColor: Color {
         switch state {
-        case .cleaningSoon, .activeNow: return .uberAmberDim
-        case .safe, .suspended:         return .uberGreenDim
+        case .cleaningSoon, .activeNow: return .sweepyAmberDim
+        case .safe, .suspended:         return .sweepyGreenDim
         }
     }
 
     private var borderColor: Color {
         switch state {
-        case .cleaningSoon, .activeNow: return .uberAmber.opacity(0.3)
-        case .safe, .suspended:         return .uberGreen.opacity(0.3)
+        case .cleaningSoon, .activeNow: return .sweepyAmber.opacity(0.3)
+        case .safe, .suspended:         return .sweepyGreen.opacity(0.3)
         }
     }
 }

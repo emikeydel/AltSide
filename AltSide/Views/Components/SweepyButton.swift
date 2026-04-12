@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct UberButton: View {
+struct SweepyButton: View {
     let title: String
     var icon: String? = nil
     var style: Style = .primary
@@ -8,10 +8,11 @@ struct UberButton: View {
     let action: () -> Void
 
     enum Style {
-        case primary    // green fill, black text
-        case secondary  // surface fill, white text, border
-        case ghost      // no fill, gray text
+        case primary     // green fill, black text
+        case secondary   // surface fill, white text, border
+        case ghost       // no fill, gray text
         case destructive // red text, no fill
+        case dark        // black fill, white text
     }
 
     var body: some View {
@@ -47,27 +48,30 @@ struct UberButton: View {
     private var foregroundColor: Color {
         switch style {
         case .primary:     .white
-        case .secondary:   .uberWhite
-        case .ghost:       .uberGray3
-        case .destructive: .uberRed
+        case .secondary:   .sweepyWhite
+        case .ghost:       .sweepyGray3
+        case .destructive: .sweepyRed
+        case .dark:        .white
         }
     }
 
     private var backgroundColor: Color {
         switch style {
-        case .primary:     .uberGreen
-        case .secondary:   .uberSurface2
+        case .primary:     .sweepyGreen
+        case .secondary:   .sweepySurface2
         case .ghost:       .clear
         case .destructive: .clear
+        case .dark:        Color(hex: "111111")
         }
     }
 
     private var borderColor: Color {
         switch style {
         case .primary:     .clear
-        case .secondary:   Color.uberBorder
+        case .secondary:   Color.sweepyBorder
         case .ghost:       .clear
         case .destructive: .clear
+        case .dark:        .clear
         }
     }
 
@@ -78,10 +82,10 @@ struct UberButton: View {
 
 #Preview {
     VStack(spacing: 12) {
-        UberButton(title: "Save spot here", icon: "location.fill", action: {})
-        UberButton(title: "Navigate to car", icon: "arrow.triangle.turn.up.right.circle", style: .secondary, action: {})
-        UberButton(title: "Skip reminders", style: .ghost, action: {})
-        UberButton(title: "Clear spot", style: .destructive, action: {})
+        SweepyButton(title: "Save spot here", icon: "location.fill", action: {})
+        SweepyButton(title: "Navigate to car", icon: "arrow.triangle.turn.up.right.circle", style: .secondary, action: {})
+        SweepyButton(title: "Skip reminders", style: .ghost, action: {})
+        SweepyButton(title: "Clear spot", style: .destructive, action: {})
     }
     .padding()
     .background(.black)

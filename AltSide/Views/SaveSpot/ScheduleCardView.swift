@@ -27,7 +27,7 @@ struct ScheduleCardView: View {
 
     private var isSoon: Bool { daysUntil < 2 }
 
-    private var accentColor: Color { isSoon ? Color.uberAmber : Color.uberGreen }
+    private var accentColor: Color { isSoon ? Color.sweepyAmber : Color.sweepyGreen }
 
     private var cleaningDayInts: [Int] {
         relevantEntries.compactMap { $0.weekdayInt }
@@ -47,11 +47,11 @@ struct ScheduleCardView: View {
                     Spacer()
                     Text(entry.timeWindowDisplay)
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color.uberGray2)
+                        .foregroundStyle(Color.sweepyGray2)
                 } else {
                     Text("No cleaning schedule found")
                         .font(.system(size: 12))
-                        .foregroundStyle(Color.uberGray3)
+                        .foregroundStyle(Color.sweepyGray3)
                 }
             }
 
@@ -75,11 +75,11 @@ struct ScheduleCardView: View {
             }
         }
         .padding(16)
-        .background(Color.uberSurface)
+        .background(Color.sweepySurface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.uberBorder, lineWidth: 1)
+                .strokeBorder(Color.sweepyBorder, lineWidth: 1)
         )
     }
 

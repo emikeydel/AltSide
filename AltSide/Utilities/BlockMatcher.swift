@@ -13,6 +13,9 @@ enum BlockMatcher {
         let crossStreetFrom: String
         let crossStreetTo: String
         let orientation: SideDetector.StreetOrientation
+        /// Coordinate snapped to the street centerline by MapKit's reverse geocoder.
+        /// More reliable than raw GPS for sign-proximity filtering.
+        let snappedCoordinate: CLLocationCoordinate2D
     }
 
     /// Reverse-geocodes a coordinate into a ResolvedStreet using iOS 26 MapKit API.
@@ -26,6 +29,10 @@ enum BlockMatcher {
         let mapItems = try await request.mapItems
         guard let item = mapItems.first else { throw BlockMatcherError.noResult }
 
+        // item.location.coordinate is snapped to the street centerline by MapKit —
+        // more reliable than the raw GPS coordinate for sign-proximity filtering.
+        let snapped = item.location.coordinate
+
         // Parse street name and house number from shortAddress
         // shortAddress is typically "123 West 79th Street, New York"
         let shortAddress = item.address?.shortAddress ?? item.name ?? ""
@@ -37,7 +44,7 @@ enum BlockMatcher {
 
         let normalized  = normalize(streetName)
         let orientation = SideDetector.inferOrientation(from: streetName)
-        let (from, to)  = await nearbyCrossStreets(coordinate: coordinate,
+        let (from, to)  = await nearbyCrossStreets(coordinate: snapped,
                                                     streetName: streetName,
                                                     houseNumber: houseNumber)
 
@@ -48,7 +55,8 @@ enum BlockMatcher {
             addressNumber: houseNumber,
             crossStreetFrom: from,
             crossStreetTo: to,
-            orientation: orientation
+            orientation: orientation,
+            snappedCoordinate: snapped
         )
     }
 
@@ -90,6 +98,10 @@ enum BlockMatcher {
         return result.trimmingCharacters(in: .whitespaces)
     }
 
+    // In-memory cache for findBestBlock — avoids repeat geocoding for the same street.
+    private static var bestBlockCache: [String: (result: (from: String, to: String)?, date: Date)] = [:]
+    private static let bestBlockCacheTTL: TimeInterval = 300 // 5 minutes
+
     /// Finds the (from, to) cross-street pair closest to `userCoordinate` by forward-geocoding
     /// the intersection of each unique from-street with the main street.
     /// Used when sign coordinates are NULL (un-geocoded signs) so proximity filtering fails.
@@ -99,6 +111,14 @@ enum BlockMatcher {
         borough: String,
         userCoordinate: CLLocationCoordinate2D
     ) async -> (from: String, to: String)? {
+        // Round to 3 decimal places (≈110 m) so nearby positions on the same block
+        // share a cache entry, but different blocks on the same street don't collide.
+        let cacheKey = String(format: "%@|%@|%.3f|%.3f",
+                              streetName, borough,
+                              userCoordinate.latitude, userCoordinate.longitude)
+        if let cached = bestBlockCache[cacheKey], Date().timeIntervalSince(cached.date) < bestBlockCacheTTL {
+            return cached.result
+        }
         // Collect unique (from, to) block pairs
         var seen = Set<String>()
         var blocks: [(from: String, to: String)] = []
@@ -142,6 +162,10 @@ enum BlockMatcher {
                 if dist < bestDistance { bestDistance = dist; bestBlock = block }
             }
         }
+        let storeKey = String(format: "%@|%@|%.3f|%.3f",
+                              streetName, borough,
+                              userCoordinate.latitude, userCoordinate.longitude)
+        bestBlockCache[storeKey] = (result: bestBlock, date: Date())
         return bestBlock
     }
 
@@ -223,4 +247,21 @@ enum BlockMatcher {
     enum BlockMatcherError: Error {
         case noResult
     }
+}
+
+// MARK: - Shared MapKit helpers
+
+extension MKPlacemark {
+    /// "123 West 79th Street, New York"  →  "123 West 79th Street"
+    var shortAddress: String? {
+        [subThoroughfare, thoroughfare, locality]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+            .nilIfEmpty
+    }
+}
+
+extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

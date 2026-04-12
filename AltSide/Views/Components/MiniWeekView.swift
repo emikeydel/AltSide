@@ -3,7 +3,7 @@ import SwiftUI
 struct MiniWeekView: View {
     let cleaningDays: [Int]        // weekday ints (1=Sun) that have cleaning
     let nextCleaningDay: Int?      // weekday int of the next cleaning
-    var accentColor: Color = .uberAmber
+    var accentColor: Color = .sweepyAmber
 
     private let labels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
     private var todayWeekday: Int { Calendar.current.component(.weekday, from: Date()) }
@@ -25,7 +25,7 @@ struct MiniWeekView: View {
             // Day label
             Text(labels[weekday - 1])
                 .font(.system(size: 10, weight: isToday ? .bold : .regular))
-                .foregroundStyle(isToday ? Color.uberWhite : Color.uberGray3)
+                .foregroundStyle(isToday ? Color.sweepyWhite : Color.sweepyGray3)
 
             // Dot
             ZStack {
@@ -35,7 +35,7 @@ struct MiniWeekView: View {
 
                 if isToday {
                     Circle()
-                        .strokeBorder(Color.uberWhite.opacity(0.6), lineWidth: 1)
+                        .strokeBorder(Color.sweepyWhite.opacity(0.6), lineWidth: 1)
                         .frame(width: dotSize(isNext: isNext) + 2, height: dotSize(isNext: isNext) + 2)
                 }
             }
@@ -56,8 +56,8 @@ struct MiniWeekView: View {
     private func dotColor(isToday: Bool, isCleaning: Bool, isNext: Bool) -> Color {
         if isNext { return accentColor }
         if isCleaning { return accentColor.opacity(0.5) }
-        if isToday { return Color.uberWhite }
-        return Color.uberSurface3
+        if isToday { return Color.sweepyWhite }
+        return Color.sweepySurface3
     }
 
     private func dotSize(isNext: Bool) -> CGFloat {

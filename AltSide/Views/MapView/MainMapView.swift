@@ -44,14 +44,40 @@ struct MainMapView: View {
     @State private var isBottomPanelExpanded = false
     @State private var screenHeight: CGFloat = 800
     @State private var showOutsideNYC = false
+    @State private var showAddressPicker = false
+    @State private var scoutInitialSide: SideDetector.StreetSide? = nil
     @State private var showWelcome = false
     @State private var hasZoomedToUser = false
+    @State private var overrideCoordinate: CLLocationCoordinate2D? = nil
+    /// Tracks the map center coordinate as the user drags — always the intended save location.
+    @State private var pinCoordinate: CLLocationCoordinate2D? = nil
+
+    /// The coordinate used for saving: address-picker override → pin on map → GPS.
+    private var activeCoordinate: CLLocationCoordinate2D {
+        overrideCoordinate ?? pinCoordinate ?? locationManager.coordinate
+    }
 
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
 
     private var savedSpot: ParkingSpot? { spots.first }
 
     var body: some View {
+        baseContent
+            .onChange(of: motionManager.justParked, handleJustParkedChange)
+            .onChange(of: bluetoothManager.justDisconnectedFromCar, handleBluetoothDisconnectChange)
+            .onChange(of: notificationManager.pendingAction, handlePendingActionChange)
+            .task(id: spots.first?.id) { syncWidgetData() }
+            .onChange(of: spots) { _, _ in syncWidgetData() }
+            .onReceive(Timer.publish(every: 300, on: .main, in: .common).autoconnect()) { _ in
+                if let spot = spots.first { liveActivityManager.startIfNeeded(for: spot) }
+            }
+            .onChange(of: scenePhase, handleScenePhaseChange)
+            .onChange(of: locationManager.coordinate.latitude, handleLatitudeChange)
+            .onChange(of: locationManager.heading, handleHeadingChange)
+            .onChange(of: locationManager.scoutModeActive, handleScoutModeActiveChange)
+    }
+
+    private var baseContent: some View {
         ZStack {
             if let spot = savedSpot {
                 SavedSpotView(
@@ -65,34 +91,48 @@ struct MainMapView: View {
                 ZStack(alignment: .bottom) {
                     map
 
-                    // Info button — top left
-                    VStack {
-                        HStack {
-                            Button(action: { showWelcome = true }) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.uberSurface2)
-                                        .frame(width: 36, height: 36)
-                                        .shadow(radius: 4)
-                                    Text("?")
-                                        .font(.system(size: 15, weight: .bold))
-                                        .foregroundStyle(Color.uberGray2)
+                    // Always-on center pin — shows where the spot will be saved
+                    if savedSpot == nil && !locationManager.scoutModeActive {
+                        centerPinOverlay
+                            .zIndex(4)
+                            .allowsHitTesting(false)
+                    }
+
+                    // Info button — top left (hidden in scout mode, moved to panel header)
+                    if !locationManager.scoutModeActive {
+                        VStack {
+                            HStack {
+                                Button(action: { showWelcome = true }) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color.sweepySurface2)
+                                            .frame(width: 36, height: 36)
+                                            .shadow(radius: 4)
+                                        Text("?")
+                                            .font(.system(size: 15, weight: .bold))
+                                            .foregroundStyle(Color.sweepyGray2)
+                                    }
                                 }
+                                .padding(.leading, 16)
+                                .padding(.top, 60)
+                                Spacer()
                             }
-                            .padding(.leading, 16)
-                            .padding(.top, 60)
                             Spacer()
                         }
-                        Spacer()
+                        .zIndex(5)
                     }
-                    .zIndex(5)
 
                     bottomPanelOverlay
 
                     if showOutsideNYC {
-                        OutsideNYCView { _, _ in showOutsideNYC = false }
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                            .zIndex(10)
+                        OutsideNYCView { coordinate, _ in
+                            overrideCoordinate = coordinate
+                            let cam = MapCameraPosition.camera(MapCamera(centerCoordinate: coordinate, distance: 400))
+                            withAnimation { cameraPosition = cam }
+                            showOutsideNYC = false
+                        }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .zIndex(10)
                     }
                 }
                 .ignoresSafeArea(edges: .bottom)
@@ -119,46 +159,16 @@ struct MainMapView: View {
         .sheet(item: $activeModal) { modal in
             modalContent(for: modal)
         }
-        .onChange(of: motionManager.justParked) { _, parked in
-            if parked && savedSpot == nil { triggerSaveFlow() }
-        }
-        .onChange(of: bluetoothManager.justDisconnectedFromCar) { _, disconnected in
-            if disconnected && savedSpot == nil { triggerSaveFlow() }
-        }
-        .onChange(of: notificationManager.pendingAction) { _, action in
-            guard let action else { return }
-            handleNotificationAction(action)
-            notificationManager.pendingAction = nil
-        }
-        .task(id: spots.first?.id) { syncWidgetData() }
-        .onChange(of: spots) { _, _ in syncWidgetData() }
-        // Check every 5 minutes whether it's time to start the Live Activity
-        .onReceive(Timer.publish(every: 300, on: .main, in: .common).autoconnect()) { _ in
-            if let spot = spots.first { liveActivityManager.startIfNeeded(for: spot) }
-        }
-        // Also check immediately when the app comes back to foreground
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active, let spot = spots.first {
-                liveActivityManager.startIfNeeded(for: spot)
+        .sheet(isPresented: $showAddressPicker) {
+            AddressPickerSheet { coordinate in
+                overrideCoordinate = coordinate
+                let cam = MapCameraPosition.camera(MapCamera(centerCoordinate: coordinate, distance: 400))
+                cameraPosition = cam
+                motionManager.startMonitoring()
+                bluetoothManager.startMonitoring()
+                triggerSaveFlow()
             }
-        }
-        .onChange(of: locationManager.coordinate.latitude) { _, lat in
-            guard lat != 0, !showOutsideNYC else { return }
-            let borough = CleaningDataManager.borough(for: locationManager.coordinate)
-            if borough.isEmpty {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                    showOutsideNYC = true
-                }
-            }
-            if !hasZoomedToUser {
-                hasZoomedToUser = true
-                withAnimation {
-                    cameraPosition = .camera(MapCamera(
-                        centerCoordinate: locationManager.coordinate,
-                        distance: 400
-                    ))
-                }
-            }
+            .presentationDetents([.large])
         }
     }
 
@@ -166,7 +176,25 @@ struct MainMapView: View {
 
     private var map: some View {
         Map(position: $cameraPosition) {
-            UserAnnotation()
+            if overrideCoordinate == nil {
+                UserAnnotation()
+            }
+            if let override = overrideCoordinate {
+                Annotation("Selected Location", coordinate: override) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.sweepyGreen.opacity(0.2))
+                            .frame(width: 48, height: 48)
+                        Circle()
+                            .fill(Color.sweepyGreen)
+                            .frame(width: 32, height: 32)
+                        Image(systemName: "mappin.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .shadow(color: Color.sweepyGreen.opacity(0.5), radius: 8)
+                }
+            }
             if let spot = savedSpot {
                 Annotation("My Car", coordinate: spot.coordinate) {
                     savedSpotPin(for: spot)
@@ -179,14 +207,20 @@ struct MainMapView: View {
             Color.clear.frame(height: panelCollapsedHeight)
         }
         .mapControls {
-            MapUserLocationButton()
+            if overrideCoordinate == nil {
+                MapUserLocationButton()
+            }
             MapCompass()
+        }
+        .onMapCameraChange(frequency: .continuous) { @MainActor context in
+            guard savedSpot == nil, !locationManager.scoutModeActive else { return }
+            pinCoordinate = context.camera.centerCoordinate
         }
         .ignoresSafeArea()
     }
 
     private func savedSpotPin(for spot: ParkingSpot) -> some View {
-        let color: Color = spot.isCleaningSoon ? Color.uberAmber : Color.uberGreen
+        let color: Color = spot.isCleaningSoon ? Color.sweepyAmber : Color.sweepyGreen
         return ZStack {
             Circle()
                 .fill(color.opacity(0.2))
@@ -201,25 +235,55 @@ struct MainMapView: View {
         .shadow(color: color.opacity(0.5), radius: 8)
     }
 
+    // MARK: - Center Pin Overlay
+
+    /// Green pin fixed at the map's visual center (above the panel).
+    /// Two equal Spacers + a panel-height placeholder correctly centre the pin
+    /// in the visible area, matching MapKit's safeAreaInset camera coordinate.
+    private var centerPinOverlay: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            VStack(spacing: 0) {
+                ZStack {
+                    Circle()
+                        .fill(Color.sweepyGreen)
+                        .frame(width: 40, height: 40)
+                        .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
+                    Image(systemName: "car.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                Rectangle()
+                    .fill(Color.sweepyGreen)
+                    .frame(width: 2, height: 6)
+            }
+            Spacer()
+            Color.clear.frame(height: panelCollapsedHeight)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     // MARK: - Bottom Panel Overlay (replaces persistent sheet)
 
     private var bottomPanelOverlay: some View {
         VStack(spacing: 0) {
-            // Drag handle — tap to toggle expanded
-            Button(action: {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    isBottomPanelExpanded.toggle()
+            // Drag handle — only shown in scout mode (no reason to expand the NoSpotPanel)
+            if locationManager.scoutModeActive {
+                Button(action: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        isBottomPanelExpanded.toggle()
+                    }
+                }) {
+                    Capsule()
+                        .fill(Color.sweepyGray3.opacity(0.5))
+                        .frame(width: 36, height: 4)
+                        .padding(.top, 10)
+                        .padding(.bottom, 6)
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
                 }
-            }) {
-                Capsule()
-                    .fill(Color.uberGray3.opacity(0.5))
-                    .frame(width: 36, height: 4)
-                    .padding(.top, 10)
-                    .padding(.bottom, 6)
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             // ASP suspension banner — shown when street cleaning is suspended today.
             if let holiday = ASPSuspensionCalendar.holidayName(on: Date()) {
@@ -235,19 +299,21 @@ struct MainMapView: View {
                     ScoutBottomPanel(
                         locationManager: locationManager,
                         cleaningDataManager: cleaningDataManager,
+                        onHelpTap: { showWelcome = true },
                         onSaveWithSide: { side, entries, street in
                             streetEntries = entries
                             resolvedStreet = street
-                            Task {
+                            scoutInitialSide = side
+                            Task { @MainActor in
                                 let best = await BlockMatcher.findBestBlock(
                                     entries: entries,
                                     streetName: street.normalizedName,
                                     borough: street.borough,
-                                    userCoordinate: locationManager.coordinate
+                                    userCoordinate: activeCoordinate
                                 )
                                 bestBlock = best
                                 withAnimation { locationManager.scoutModeActive = false }
-                                createSpot(street: street, side: side)
+                                activeModal = .savePicker
                             }
                         }
                     )
@@ -256,11 +322,16 @@ struct MainMapView: View {
                         isLoading: isResolvingStreet || cleaningDataManager.isLoading,
                         onSaveTap: {
                             motionManager.startMonitoring()
-                            triggerSaveFlow()
+                            bluetoothManager.startMonitoring()
+                            triggerSaveFlow(at: pinCoordinate)
                         },
                         onScoutTap: {
                             motionManager.startMonitoring()
+                            bluetoothManager.startMonitoring()
                             withAnimation { locationManager.scoutModeActive = true }
+                        },
+                        onAddressTap: {
+                            showAddressPicker = true
                         }
                     )
                 }
@@ -268,10 +339,10 @@ struct MainMapView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(height: isBottomPanelExpanded ? panelExpandedHeight : panelCollapsedHeight)
-        .background(Color.uberSurface)
+        .background(Color.sweepySurface)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .shadow(color: .black.opacity(0.2), radius: 12, y: -4)
-        .gesture(
+        .gesture(locationManager.scoutModeActive ?
             DragGesture(minimumDistance: 20)
                 .onEnded { value in
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -282,6 +353,7 @@ struct MainMapView: View {
                         }
                     }
                 }
+            : nil
         )
         .padding(.horizontal, 0)
     }
@@ -299,16 +371,28 @@ struct MainMapView: View {
         case .savePicker:
             if let street = resolvedStreet {
                 SidePickerView(
-                    coordinate: locationManager.coordinate,
+                    coordinate: activeCoordinate,
                     streetName: street.name,
                     entries: streetEntries,
                     locationManager: locationManager,
                     streetOrientation: street.orientation,
                     onConfirm: { side, confirmedEntries in
+                        scoutInitialSide = nil
                         activeModal = nil
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                             createSpot(street: street, side: side, confirmedEntries: confirmedEntries)
                         }
+                    },
+                    initialSide: scoutInitialSide,
+                    onHelpTap: { showWelcome = true },
+                    onRefresh: {
+                        let fresh = await cleaningDataManager.loadSchedule(
+                            streetName: street.normalizedName,
+                            borough: street.borough,
+                            coordinate: street.snappedCoordinate
+                        )
+                        streetEntries = fresh
+                        return fresh
                     }
                 )
                 .presentationDetents([.large])
@@ -335,6 +419,16 @@ struct MainMapView: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                             activeModal = .parkedSummary
                         }
+                    },
+                    onCancel: {
+                        activeModal = nil
+                        if let spot = pendingSpot {
+                            Task { @MainActor in await notificationManager.cancelAlerts(for: spot.id) }
+                            spot.isActive = false
+                            try? modelContext.save()
+                        }
+                        pendingSpot = nil
+                        overrideCoordinate = nil
                     }
                 )
                 .presentationDetents([.large])
@@ -345,8 +439,8 @@ struct MainMapView: View {
                 ReminderSetupView(
                     spot: spot,
                     onSave: {
-                        Task { await notificationManager.scheduleAlerts(for: spot) }
-                        Task { await liveActivityManager.updateActivity(for: spot) }
+                        Task { @MainActor in await notificationManager.scheduleAlerts(for: spot) }
+                        Task { @MainActor in await liveActivityManager.updateActivity(for: spot) }
                         activeModal = nil
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                             activeModal = .parkedSummary
@@ -357,6 +451,16 @@ struct MainMapView: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                             activeModal = .parkedSummary
                         }
+                    },
+                    onCancel: {
+                        activeModal = nil
+                        if let spot = pendingSpot {
+                            Task { @MainActor in await notificationManager.cancelAlerts(for: spot.id) }
+                            spot.isActive = false
+                            try? modelContext.save()
+                        }
+                        pendingSpot = nil
+                        overrideCoordinate = nil
                     }
                 )
                 .presentationDetents([.large])
@@ -379,37 +483,107 @@ struct MainMapView: View {
 
     // MARK: - Actions
 
-    private func triggerSaveFlow() {
+    private func handleJustParkedChange(_: Bool, _ parked: Bool) {
+        if parked && savedSpot == nil { triggerSaveFlow() }
+    }
+
+    private func handleBluetoothDisconnectChange(_: Bool, _ disconnected: Bool) {
+        if disconnected && savedSpot == nil { triggerSaveFlow() }
+    }
+
+    private func handlePendingActionChange(_: ParkingNotificationAction?, _ action: ParkingNotificationAction?) {
+        guard let action else { return }
+        handleNotificationAction(action)
+        notificationManager.pendingAction = nil
+    }
+
+    private func handleScenePhaseChange(_: ScenePhase, _ phase: ScenePhase) {
+        if phase == .active, let spot = spots.first {
+            liveActivityManager.startIfNeeded(for: spot)
+        }
+    }
+
+    private func handleHeadingChange(_: Double, _ heading: Double) {
+        guard locationManager.scoutModeActive, heading >= 0 else { return }
+        updateScoutCamera()
+    }
+
+    private func handleLatitudeChange(_: Double, _ lat: Double) {
+        guard lat != 0, overrideCoordinate == nil else { return }
+        if locationManager.scoutModeActive {
+            updateScoutCamera()
+            return
+        }
+        if !showOutsideNYC {
+            let borough = CleaningDataManager.borough(for: locationManager.coordinate)
+            if borough.isEmpty {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                    showOutsideNYC = true
+                }
+            }
+        }
+        if !hasZoomedToUser {
+            hasZoomedToUser = true
+            let coord = locationManager.coordinate
+            pinCoordinate = coord
+            let cam = MapCameraPosition.camera(MapCamera(centerCoordinate: coord, distance: 400))
+            withAnimation { cameraPosition = cam }
+        }
+    }
+
+    private func handleScoutModeActiveChange(_: Bool, _ active: Bool) {
+        guard active, overrideCoordinate == nil else { return }
+        updateScoutCamera()
+    }
+
+    private func updateScoutCamera() {
+        let heading = locationManager.heading >= 0 ? locationManager.heading : 0
+        cameraPosition = .camera(MapCamera(
+            centerCoordinate: locationManager.coordinate,
+            distance: 400,
+            heading: heading,
+            pitch: 0
+        ))
+    }
+
+private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
+        bestBlock = nil
         isResolvingStreet = true
-        Task {
+        Task { @MainActor in
             do {
-                let street = try await BlockMatcher.resolve(coordinate: locationManager.coordinate)
+                let street = try await BlockMatcher.resolve(coordinate: saveCoord ?? activeCoordinate)
+                let snapped = street.snappedCoordinate
                 let allEntries = await cleaningDataManager.loadSchedule(
                     streetName: street.normalizedName,
                     borough: street.borough,
-                    coordinate: locationManager.coordinate
+                    coordinate: snapped
                 )
 
-                // Pre-filter to signs within ~300 m (984 ft) of the user, matching
-                // the same proximity window scout mode uses for its nearbyEntries display.
-                // Entries with NULL sign coords are kept so the cross-street fallback still works.
-                let coord = locationManager.coordinate
-                let (ux, uy) = CleaningDataManager.wgs84ToStatePlane(lat: coord.latitude, lon: coord.longitude)
-                let nearby = allEntries.filter { e in
-                    guard let sx = e.signXCoord, let sy = e.signYCoord else { return false }
-                    return sqrt((sx - ux) * (sx - ux) + (sy - uy) * (sy - uy)) <= 984
-                }
+                let nearby = CleaningDataManager.proximityFiltered(allEntries, coordinate: snapped)
                 let entries = nearby.isEmpty ? allEntries : nearby
+                let deduped = CleaningDataManager.closestSignDedup(entries, coordinate: snapped)
 
                 let best = await BlockMatcher.findBestBlock(
-                    entries: entries,
+                    entries: deduped,
                     streetName: street.normalizedName,
                     borough: street.borough,
-                    userCoordinate: locationManager.coordinate
+                    userCoordinate: saveCoord ?? activeCoordinate
                 )
                 resolvedStreet = street
-                streetEntries = entries
                 bestBlock = best
+                // If findBestBlock identified the specific block segment, filter entries to
+                // only that block. This removes signs from adjacent blocks that share the same
+                // street name but have different schedules (e.g. a Wednesday sign from the
+                // next block over that would otherwise override the correct Thursday schedule).
+                if let best = best {
+                    let blockEntries = deduped.filter { e in
+                        (BlockMatcher.fuzzyMatch(e.fromStreet, best.from) && BlockMatcher.fuzzyMatch(e.toStreet, best.to)) ||
+                        (BlockMatcher.fuzzyMatch(e.fromStreet, best.to)   && BlockMatcher.fuzzyMatch(e.toStreet, best.from))
+                    }
+                    streetEntries = blockEntries.isEmpty ? deduped : blockEntries
+                } else {
+                    streetEntries = deduped
+                }
             } catch {
                 resolvedStreet = BlockMatcher.ResolvedStreet(
                     name: "Current Location",
@@ -418,7 +592,8 @@ struct MainMapView: View {
                     addressNumber: "",
                     crossStreetFrom: "",
                     crossStreetTo: "",
-                    orientation: .eastWest
+                    orientation: .eastWest,
+                    snappedCoordinate: activeCoordinate
                 )
                 streetEntries = []
                 bestBlock = nil
@@ -433,26 +608,13 @@ struct MainMapView: View {
         side: SideDetector.StreetSide,
         confirmedEntries: [StreetCleaningEntry]? = nil
     ) {
-        // If entries were passed directly from the picker (already proximity-filtered and
-        // shown to the user), use them as-is. Otherwise fall back to blockMatchedEntries
-        // (scout mode path, which handles its own filtering).
+        // Entries are already deduped to one per (side, weekday) by triggerSaveFlow.
         let pool = confirmedEntries ?? streetEntries
-        let sideEntries = pool.filter { $0.normalizedSide == side }
-        let blockEntries = blockMatchedEntries(sideEntries, street: street)
-        let source = blockEntries.isEmpty ? sideEntries : blockEntries
+        let source = pool.filter { $0.normalizedSide == side }
 
-        // Sort by next cleaning date so dedupedEntries.first is always the most imminent entry,
-        // ensuring the stored time window matches the next actual cleaning event.
-        let sorted = source.sorted {
+        // Sort so the most imminent cleaning is first — used to pick the stored time window.
+        let dedupedEntries = source.sorted {
             ($0.nextCleaningDate() ?? .distantFuture) < ($1.nextCleaningDate() ?? .distantFuture)
-        }
-
-        // One entry per cleaning day — avoid duplicates from multiple signs on the same block.
-        var seenDays = Set<Int>()
-        let dedupedEntries = sorted.filter { entry in
-            guard let day = entry.weekdayInt, !seenDays.contains(day) else { return false }
-            seenDays.insert(day)
-            return true
         }
 
         // Use cross streets from the dataset entry (via findBestBlock) when available;
@@ -465,7 +627,7 @@ struct MainMapView: View {
         let crossTo   = bestBlock.map { titleCase($0.to)   } ?? street.crossStreetTo
 
         let spot = ParkingSpot(
-            coordinate: locationManager.coordinate,
+            coordinate: activeCoordinate,
             streetName: street.name,
             crossStreetFrom: crossFrom,
             crossStreetTo: crossTo,
@@ -483,53 +645,12 @@ struct MainMapView: View {
         liveActivityManager.startIfNeeded(for: spot)
         // Request notification permission on first save — contextually relevant
         if notificationManager.authorizationStatus == .notDetermined {
-            Task { _ = await notificationManager.requestPermission() }
+            Task { @MainActor in _ = await notificationManager.requestPermission() }
         }
         pendingSpot = spot
         activeModal = .saveConfirm
     }
 
-    /// Filters entries to the user's specific block.
-    /// Prefers NY State Plane coordinate proximity when available;
-    /// falls back to cross-street name matching.
-    private func blockMatchedEntries(_ entries: [StreetCleaningEntry], street: BlockMatcher.ResolvedStreet) -> [StreetCleaningEntry] {
-        let userCoord = locationManager.coordinate
-
-        // --- State Plane proximity (most reliable) ---
-        // Convert user WGS84 to approximate EPSG:2263 (US survey feet) and
-        // compare against each sign's stored x/y coords.
-        // 300 m ≈ 984 ft; threshold is generous enough for block-level matching.
-        let (userX, userY) = CleaningDataManager.wgs84ToStatePlane(lat: userCoord.latitude, lon: userCoord.longitude)
-        let thresholdFt: Double = 984  // 300 m
-        let byProximity = entries.filter { entry in
-            guard let sx = entry.signXCoord, let sy = entry.signYCoord else { return false }
-            let dx = sx - userX, dy = sy - userY
-            return sqrt(dx * dx + dy * dy) <= thresholdFt
-        }
-        if !byProximity.isEmpty { return byProximity }
-
-        // --- Best block match (geocoded intersection proximity) ---
-        if let best = bestBlock {
-            let bf = BlockMatcher.normalize(best.from)
-            let bt = BlockMatcher.normalize(best.to)
-            let byBestBlock = entries.filter { entry in
-                let ef = BlockMatcher.normalize(entry.fromStreet)
-                let et = BlockMatcher.normalize(entry.toStreet)
-                return ef == bf || ef == bt || et == bf || et == bt
-            }
-            if !byBestBlock.isEmpty { return byBestBlock }
-        }
-
-        // --- Cross-street name fallback ---
-        guard !street.crossStreetFrom.isEmpty else { return [] }
-        let cf = BlockMatcher.normalize(street.crossStreetFrom)
-        let ct = BlockMatcher.normalize(street.crossStreetTo)
-        return entries.filter { entry in
-            let ef = BlockMatcher.normalize(entry.fromStreet)
-            let et = BlockMatcher.normalize(entry.toStreet)
-            return ef == cf || ef == ct || et == cf || et == ct
-        }
-    }
 
 
     private func syncWidgetData() {
@@ -567,10 +688,11 @@ struct MainMapView: View {
     }
 
     private func clearSpot(_ spot: ParkingSpot) {
-        Task { await notificationManager.cancelAlerts(for: spot.id) }
-        Task { await liveActivityManager.endActivity() }
+        Task { @MainActor in await notificationManager.cancelAlerts(for: spot.id) }
+        Task { @MainActor in await liveActivityManager.endActivity() }
         spot.isActive = false
         try? modelContext.save()
+        overrideCoordinate = nil
     }
 
     private func navigateToCar(_ spot: ParkingSpot) {
@@ -599,24 +721,25 @@ struct NoSpotPanel: View {
     let isLoading: Bool
     let onSaveTap: () -> Void
     let onScoutTap: () -> Void
+    let onAddressTap: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("WHERE DID YOU PARK?")
                 .font(.system(size: 10, weight: .bold))
                 .tracking(1.5)
-                .foregroundStyle(Color.uberGray3)
+                .foregroundStyle(Color.sweepyGray3)
 
             Text("Save your spot")
                 .font(.system(size: 28, weight: .black))
                 .tracking(-0.8)
-                .foregroundStyle(Color.uberWhite)
+                .foregroundStyle(Color.sweepyWhite)
 
             Text("We'll track street cleaning for the exact side you parked on.")
                 .font(.system(size: 13))
-                .foregroundStyle(Color.uberGray2)
+                .foregroundStyle(Color.sweepyGray2)
 
-            UberButton(
+            SweepyButton(
                 title: "Save spot here",
                 icon: "location.fill",
                 isLoading: isLoading,
@@ -626,13 +749,23 @@ struct NoSpotPanel: View {
                 }
             )
 
-            UberButton(
-                title: "Use my location and find parking",
-                icon: "dot.radiowaves.left.and.right",
-                style: .secondary,
+            SweepyButton(
+                title: "Scout mode",
+                icon: "steeringwheel",
+                style: .dark,
+                action: {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onScoutTap()
+                }
+            )
+
+            SweepyButton(
+                title: "Enter a specific address",
+                icon: "magnifyingglass",
+                style: .ghost,
                 action: {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onScoutTap()
+                    onAddressTap()
                 }
             )
         }
@@ -650,25 +783,25 @@ struct ASPSuspendedBanner: View {
         HStack(spacing: 10) {
             Image(systemName: "checkmark.shield.fill")
                 .font(.system(size: 16))
-                .foregroundStyle(Color.uberGreen)
+                .foregroundStyle(Color.sweepyGreen)
             VStack(alignment: .leading, spacing: 1) {
                 Text("ASP SUSPENDED TODAY")
                     .font(.system(size: 10, weight: .bold))
                     .tracking(1.2)
-                    .foregroundStyle(Color.uberGreen)
+                    .foregroundStyle(Color.sweepyGreen)
                 Text(holidayName)
                     .font(.system(size: 12))
-                    .foregroundStyle(Color.uberGray2)
+                    .foregroundStyle(Color.sweepyGray2)
             }
             Spacer()
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color.uberGreen.opacity(0.08))
+        .background(Color.sweepyGreen.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.uberGreen.opacity(0.25), lineWidth: 1)
+                .strokeBorder(Color.sweepyGreen.opacity(0.25), lineWidth: 1)
         )
     }
 }

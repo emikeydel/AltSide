@@ -11,10 +11,10 @@ struct TipJarButton: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Enjoying Sweepy?")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.uberWhite)
+                        .foregroundStyle(Color.sweepyWhite)
                     Text("Leave a tip to support the app")
                         .font(.system(size: 11))
-                        .foregroundStyle(Color.uberGray3)
+                        .foregroundStyle(Color.sweepyGray3)
                 }
                 Spacer()
                 Image(systemName: "heart.fill")
@@ -23,11 +23,11 @@ struct TipJarButton: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(Color.uberSurface)
+            .background(Color.sweepySurface)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(Color.uberBorder, lineWidth: 1)
+                    .strokeBorder(Color.sweepyBorder, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

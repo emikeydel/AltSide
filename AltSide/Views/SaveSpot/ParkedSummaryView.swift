@@ -10,15 +10,15 @@ struct ParkedSummaryView: View {
     @State private var sweepyScale: CGFloat = 0.5
     @State private var sweepyOpacity: Double = 0
 
-    private var accentColor: Color { Color.uberGreen }
+    private var accentColor: Color { Color.sweepyGreen }
 
     var body: some View {
         ZStack {
-            Color.uberBlack.ignoresSafeArea()
+            Color.sweepyBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 Capsule()
-                    .fill(Color.uberGray3.opacity(0.4))
+                    .fill(Color.sweepyGray3.opacity(0.4))
                     .frame(width: 36, height: 4)
                     .padding(.top, 12)
                     .padding(.bottom, 4)
@@ -40,7 +40,7 @@ struct ParkedSummaryView: View {
                         remindersCard
 
                         VStack(spacing: 10) {
-                            UberButton(
+                            SweepyButton(
                                 title: "Share my location",
                                 icon: "square.and.arrow.up",
                                 action: { showShare = true }
@@ -48,7 +48,7 @@ struct ParkedSummaryView: View {
                             Button(action: onDone) {
                                 Text("Got it")
                                     .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color.uberGray3)
+                                    .foregroundStyle(Color.sweepyGray3)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
                             }
@@ -69,11 +69,12 @@ struct ParkedSummaryView: View {
                 spot: spot,
                 onSave: {
                     if let nm = notificationManager {
-                        Task { await nm.scheduleAlerts(for: spot) }
+                        Task { @MainActor in await nm.scheduleAlerts(for: spot) }
                     }
                     showEditReminders = false
                 },
-                onSkip: { showEditReminders = false }
+                onSkip: { showEditReminders = false },
+                onCancel: { showEditReminders = false }
             )
             .presentationDetents([.large])
         }
@@ -97,7 +98,7 @@ struct ParkedSummaryView: View {
             Text(spot.streetName)
                 .font(.system(size: 34, weight: .black))
                 .tracking(-1)
-                .foregroundStyle(Color.uberWhite)
+                .foregroundStyle(Color.sweepyWhite)
                 .multilineTextAlignment(.center)
 
             VStack(spacing: 4) {
@@ -105,12 +106,12 @@ struct ParkedSummaryView: View {
                     let rel = side.relativeLabel(facing: spot.parkingHeading)
                     Text(rel.map { "\($0) side (\(side.displayName))" } ?? "\(side.displayName) side")
                         .font(.system(size: 15))
-                        .foregroundStyle(Color.uberGray2)
+                        .foregroundStyle(Color.sweepyGray2)
                 }
                 if !spot.crossStreetFrom.isEmpty && !spot.crossStreetTo.isEmpty {
                     Text("between \(spot.crossStreetFrom) & \(spot.crossStreetTo)")
                         .font(.system(size: 13))
-                        .foregroundStyle(Color.uberGray3)
+                        .foregroundStyle(Color.sweepyGray3)
                 }
             }
         }
@@ -143,16 +144,16 @@ struct ParkedSummaryView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "calendar.badge.exclamationmark")
                         .font(.system(size: 16))
-                        .foregroundStyle(Color.uberGray3)
+                        .foregroundStyle(Color.sweepyGray3)
                     Text("No cleaning schedule found for this block")
                         .font(.system(size: 13))
-                        .foregroundStyle(Color.uberGray3)
+                        .foregroundStyle(Color.sweepyGray3)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity)
-                .background(Color.uberSurface)
+                .background(Color.sweepySurface)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.uberBorder, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.sweepyBorder, lineWidth: 1))
             }
         }
     }
@@ -165,41 +166,41 @@ struct ParkedSummaryView: View {
                 Text("CLEANING SCHEDULE")
                     .font(.system(size: 10, weight: .bold))
                     .tracking(1.5)
-                    .foregroundStyle(Color.uberGray3)
+                    .foregroundStyle(Color.sweepyGray3)
                 Spacer()
             }
             .padding(.horizontal, 14)
             .padding(.top, 14)
             .padding(.bottom, 10)
 
-            Divider().background(Color.uberBorder)
+            Divider().background(Color.sweepyBorder)
 
             VStack(spacing: 0) {
                 scheduleRow(icon: "calendar", label: "Days", value: cleaningDaysText)
-                Divider().background(Color.uberBorder).padding(.horizontal, 14)
+                Divider().background(Color.sweepyBorder).padding(.horizontal, 14)
                 scheduleRow(icon: "clock", label: "Time window", value: timeWindowText)
                 if let next = spot.nextCleaningDate {
-                    Divider().background(Color.uberBorder).padding(.horizontal, 14)
+                    Divider().background(Color.sweepyBorder).padding(.horizontal, 14)
                     scheduleRow(icon: "arrow.clockwise", label: "Next cleaning",
                                 value: nextCleaningText(next), valueColor: accentColor)
                 }
             }
             .padding(.bottom, 4)
         }
-        .background(Color.uberSurface)
+        .background(Color.sweepySurface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.uberBorder, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.sweepyBorder, lineWidth: 1))
     }
 
-    private func scheduleRow(icon: String, label: String, value: String, valueColor: Color = Color.uberWhite) -> some View {
+    private func scheduleRow(icon: String, label: String, value: String, valueColor: Color = Color.sweepyWhite) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 13))
-                .foregroundStyle(Color.uberGray3)
+                .foregroundStyle(Color.sweepyGray3)
                 .frame(width: 18)
             Text(label)
                 .font(.system(size: 13))
-                .foregroundStyle(Color.uberGray2)
+                .foregroundStyle(Color.sweepyGray2)
             Spacer()
             Text(value)
                 .font(.system(size: 13, weight: .semibold))
@@ -219,22 +220,22 @@ struct ParkedSummaryView: View {
                 Text("REMINDERS")
                     .font(.system(size: 10, weight: .bold))
                     .tracking(1.5)
-                    .foregroundStyle(Color.uberGray3)
+                    .foregroundStyle(Color.sweepyGray3)
                 Spacer()
                 Button(action: { showEditReminders = true }) {
                     Text(activeReminders.isEmpty ? "Add" : "Edit")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.uberGreen)
+                        .foregroundStyle(Color.sweepyGreen)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 5)
-                        .background(Color.uberGreen.opacity(0.12))
+                        .background(Color.sweepyGreen.opacity(0.12))
                         .clipShape(Capsule())
                 }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
 
-            Divider().background(Color.uberBorder)
+            Divider().background(Color.sweepyBorder)
 
             if activeReminders.isEmpty {
                 // No reminders set
@@ -242,15 +243,15 @@ struct ParkedSummaryView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "bell.slash")
                             .font(.system(size: 14))
-                            .foregroundStyle(Color.uberGray3)
+                            .foregroundStyle(Color.sweepyGray3)
                             .frame(width: 18)
                         Text("No reminders set — tap to add")
                             .font(.system(size: 13))
-                            .foregroundStyle(Color.uberGray3)
+                            .foregroundStyle(Color.sweepyGray3)
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.system(size: 11))
-                            .foregroundStyle(Color.uberGray3)
+                            .foregroundStyle(Color.sweepyGray3)
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 14)
@@ -261,16 +262,16 @@ struct ParkedSummaryView: View {
                 VStack(spacing: 0) {
                     ForEach(Array(activeReminders.enumerated()), id: \.offset) { idx, item in
                         if idx > 0 {
-                            Divider().background(Color.uberBorder).padding(.horizontal, 14)
+                            Divider().background(Color.sweepyBorder).padding(.horizontal, 14)
                         }
                         HStack(spacing: 10) {
                             Image(systemName: "bell.fill")
                                 .font(.system(size: 12))
-                                .foregroundStyle(Color.uberGreen)
+                                .foregroundStyle(Color.sweepyGreen)
                                 .frame(width: 18)
                             Text(item)
                                 .font(.system(size: 13))
-                                .foregroundStyle(Color.uberGray2)
+                                .foregroundStyle(Color.sweepyGray2)
                             Spacer()
                         }
                         .padding(.horizontal, 14)
@@ -280,9 +281,9 @@ struct ParkedSummaryView: View {
                 .padding(.bottom, 4)
             }
         }
-        .background(Color.uberSurface)
+        .background(Color.sweepySurface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.uberBorder, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.sweepyBorder, lineWidth: 1))
     }
 
     private var activeReminders: [String] {

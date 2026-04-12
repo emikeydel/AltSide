@@ -15,11 +15,11 @@ struct DataLoadingBanner: View {
                 if hasError {
                     Image(systemName: "wifi.slash")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.uberAmber)
+                        .foregroundStyle(Color.sweepyAmber)
                 } else {
                     // Pulsing dot
                     Circle()
-                        .fill(Color.uberGreen)
+                        .fill(Color.sweepyGreen)
                         .frame(width: 6, height: 6)
                         .scaleEffect(progress < 1 ? 1.2 : 1.0)
                         .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: progress)
@@ -27,14 +27,14 @@ struct DataLoadingBanner: View {
 
                 Text(statusMessage)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(hasError ? Color.uberAmber : Color.uberGray2)
+                    .foregroundStyle(hasError ? Color.sweepyAmber : Color.sweepyGray2)
 
                 Spacer()
 
                 if progress > 0 && progress < 1 {
                     Text("\(Int(progress * 100))%")
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundStyle(Color.uberGray3)
+                        .foregroundStyle(Color.sweepyGray3)
                 }
             }
 
@@ -43,23 +43,23 @@ struct DataLoadingBanner: View {
                 ZStack(alignment: .leading) {
                     // Track
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.uberSurface3)
+                        .fill(Color.sweepySurface3)
                         .frame(height: 4)
 
                     if hasError {
                         // Amber bar at whatever progress we reached
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.uberAmber.opacity(0.6))
+                            .fill(Color.sweepyAmber.opacity(0.6))
                             .frame(width: geo.size.width * max(0.05, progress), height: 4)
                     } else if progress >= 1 {
                         // Completed — full green bar
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.uberGreen)
+                            .fill(Color.sweepyGreen)
                             .frame(width: geo.size.width, height: 4)
                     } else {
                         // In-progress — green fill with shimmer
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.uberGreen)
+                            .fill(Color.sweepyGreen)
                             .frame(width: geo.size.width * max(0.05, progress), height: 4)
                             .overlay(
                                 // Shimmer sweep
@@ -85,12 +85,12 @@ struct DataLoadingBanner: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color.uberSurface2)
+        .background(Color.sweepySurface2)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(
-                    hasError ? Color.uberAmber.opacity(0.3) : Color.uberGreen.opacity(0.2),
+                    hasError ? Color.sweepyAmber.opacity(0.3) : Color.sweepyGreen.opacity(0.2),
                     lineWidth: 1
                 )
         )

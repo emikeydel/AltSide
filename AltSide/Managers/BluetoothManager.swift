@@ -8,13 +8,19 @@ import Observation
 final class BluetoothManager: NSObject {
     var justDisconnectedFromCar: Bool = false
 
-    private var centralManager: CBCentralManager!
+    private var centralManager: CBCentralManager?
     private var knownCarDeviceNames: Set<String> = []
 
     override init() {
         super.init()
-        centralManager = CBCentralManager(delegate: self, queue: .main)
         loadKnownDevices()
+    }
+
+    /// Call this when the user opts into Bluetooth-based parking detection.
+    /// Triggers the permission prompt only at that point.
+    func startMonitoring() {
+        guard centralManager == nil else { return }
+        centralManager = CBCentralManager(delegate: self, queue: .main)
     }
 
     // MARK: - Private

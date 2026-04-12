@@ -5,7 +5,7 @@ struct WelcomeView: View {
 
     var body: some View {
         ZStack {
-            Color.uberBlack.ignoresSafeArea()
+            Color.sweepyBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
 
@@ -21,7 +21,7 @@ struct WelcomeView: View {
                 // Tagline
                 Text("Never forget to move your car.")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.uberWhite)
+                    .foregroundStyle(Color.sweepyWhite)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 28)
 
@@ -30,7 +30,7 @@ struct WelcomeView: View {
                 // Description
                 Text("Sweepy tracks NYC alternate side parking schedules so you know exactly when street cleaning hits your block. Set alerts before the sweeper arrives or when rules are suspended.")
                     .font(.system(size: 15, design: .rounded))
-                    .foregroundStyle(Color.uberGray2)
+                    .foregroundStyle(Color.sweepyGray2)
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
                     .padding(.horizontal, 28)
@@ -52,7 +52,7 @@ struct WelcomeView: View {
 
                 Spacer()
 
-                UberButton(title: "Let's go!", action: onDismiss)
+                SweepyButton(title: "Let's go!", action: onDismiss)
                     .padding(.horizontal, 28)
 
                 TipJarButton()
@@ -61,7 +61,7 @@ struct WelcomeView: View {
 
                 Link("Questions? support@sweepy.site", destination: URL(string: "mailto:support@sweepy.site")!)
                     .font(.system(size: 12, design: .rounded))
-                    .foregroundStyle(Color.uberGray3)
+                    .foregroundStyle(Color.sweepyGray3)
                     .padding(.top, 12)
                     .padding(.bottom, 40)
             }
@@ -80,7 +80,7 @@ struct WelcomeView: View {
             }
             Text(text)
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color.uberGray2)
+                .foregroundStyle(Color.sweepyGray2)
             Spacer()
         }
     }

@@ -12,6 +12,7 @@
 		A62177952F86F3F000E6D75A /* AltSideWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A62177812F86F3ED00E6D75A /* AltSideWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A62177A22F86F7F600E6D75A /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A62177A12F86F7F600E6D75A /* ActivityKit.framework */; };
 		A63BD7BD2F86FC0B00B7AA3A /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A62177832F86F3ED00E6D75A /* WidgetKit.framework */; };
+		A6F1CA022F9B6B4100A7C505 /* CarPlay.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A6F1CA012F9B6B4100A7C505 /* CarPlay.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -45,6 +46,7 @@
 		A62177A12F86F7F600E6D75A /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
 		A63BD7BB2F86FB1E00B7AA3A /* AltSideWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AltSideWidgetExtension.entitlements; sourceTree = "<group>"; };
 		A6625AA12F7AC23C0027C505 /* AltSide.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AltSide.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A6F1CA012F9B6B4100A7C505 /* CarPlay.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CarPlay.framework; path = System/Library/Frameworks/CarPlay.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -64,6 +66,13 @@
 			);
 			target = A62177802F86F3ED00E6D75A /* AltSideWidgetExtension */;
 		};
+		A6F1CA032F9B6B4100A7C505 /* Exceptions for "AltSide" folder in "AltSide" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A6625AA02F7AC23C0027C505 /* AltSide */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -78,6 +87,7 @@
 		A6625AA32F7AC23C0027C505 /* AltSide */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
+				A6F1CA032F9B6B4100A7C505 /* Exceptions for "AltSide" folder in "AltSide" target */,
 				A621779E2F86F47700E6D75A /* Exceptions for "AltSide" folder in "AltSideWidgetExtension" target */,
 			);
 			path = AltSide;
@@ -101,6 +111,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A63BD7BD2F86FC0B00B7AA3A /* WidgetKit.framework in Frameworks */,
+				A6F1CA022F9B6B4100A7C505 /* CarPlay.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -111,6 +122,7 @@
 			isa = PBXGroup;
 			children = (
 				A62177A12F86F7F600E6D75A /* ActivityKit.framework */,
+				A6F1CA012F9B6B4100A7C505 /* CarPlay.framework */,
 				A62177832F86F3ED00E6D75A /* WidgetKit.framework */,
 				A62177852F86F3ED00E6D75A /* SwiftUI.framework */,
 			);
@@ -468,19 +480,9 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				INFOPLIST_KEY_CFBundleDisplayName = Sweepy;
 				DEVELOPMENT_TEAM = 37AKZN7WU7;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AltSide detects when you disconnect from your car's Bluetooth to automatically prompt you to save your parking spot.";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "AltSide uses your location to detect when you park and show nearby street cleaning schedules.";
-				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "AltSide uses your location in the background to detect when you have parked.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "AltSide needs your location to find nearby street cleaning schedules.";
-				INFOPLIST_KEY_NSMotionUsageDescription = "AltSide uses motion data to detect when your car has stopped moving.";
-				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AltSide/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -506,19 +508,9 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				INFOPLIST_KEY_CFBundleDisplayName = Sweepy;
 				DEVELOPMENT_TEAM = 37AKZN7WU7;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AltSide detects when you disconnect from your car's Bluetooth to automatically prompt you to save your parking spot.";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "AltSide uses your location to detect when you park and show nearby street cleaning schedules.";
-				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "AltSide uses your location in the background to detect when you have parked.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "AltSide needs your location to find nearby street cleaning schedules.";
-				INFOPLIST_KEY_NSMotionUsageDescription = "AltSide uses motion data to detect when your car has stopped moving.";
-				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AltSide/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

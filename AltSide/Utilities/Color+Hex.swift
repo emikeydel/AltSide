@@ -27,18 +27,18 @@ extension Color {
 // MARK: - Design System Tokens
 
 extension Color {
-    static let uberBlack    = Color(hex: "EAE8E0")          // warm cream — app background
-    static let uberSurface  = Color.white                    // card / panel background
-    static let uberSurface2 = Color(hex: "F5F2EC")          // secondary surface
-    static let uberSurface3 = Color(hex: "E8E4DC")          // chip / tertiary surface
-    static let uberGreen    = Color(hex: "2DB349")           // primary green
-    static let uberGreenDim = Color(hex: "2DB349").opacity(0.15)
-    static let uberAmber    = Color(hex: "FF5E00")           // warning orange
-    static let uberAmberDim = Color(hex: "FF5E00").opacity(0.15)
-    static let uberWhite    = Color(hex: "1A1A1A")           // primary text (dark on light bg)
-    static let uberGray1    = Color(hex: "333333")           // secondary dark text
-    static let uberGray2    = Color(hex: "555555")           // medium text
-    static let uberGray3    = Color(hex: "888888")           // muted / caption
-    static let uberRed      = Color(hex: "E24B4A")           // error / car pin
-    static let uberBorder   = Color.black.opacity(0.08)      // card border on light bg
+    static let sweepyBlack    = Color(hex: "EAE8E0")          // warm cream — app background
+    static let sweepySurface  = Color.white                    // card / panel background
+    static let sweepySurface2 = Color(hex: "F5F2EC")          // secondary surface
+    static let sweepySurface3 = Color(hex: "E8E4DC")          // chip / tertiary surface
+    static let sweepyGreen    = Color(hex: "2DB349")           // primary green
+    static let sweepyGreenDim = Color(hex: "2DB349").opacity(0.15)
+    static let sweepyAmber    = Color(hex: "FF5E00")           // warning orange
+    static let sweepyAmberDim = Color(hex: "FF5E00").opacity(0.15)
+    static let sweepyWhite    = Color(hex: "1A1A1A")           // primary text (dark on light bg)
+    static let sweepyGray1    = Color(hex: "333333")           // secondary dark text
+    static let sweepyGray2    = Color(hex: "555555")           // medium text
+    static let sweepyGray3    = Color(hex: "888888")           // muted / caption
+    static let sweepyRed      = Color(hex: "E24B4A")           // error / car pin
+    static let sweepyBorder   = Color.black.opacity(0.08)      // card border on light bg
 }

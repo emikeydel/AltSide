@@ -9,9 +9,18 @@ struct SidePickerView: View {
     let streetOrientation: SideDetector.StreetOrientation
     let onConfirm: (SideDetector.StreetSide, [StreetCleaningEntry]) -> Void
 
+    var initialSide: SideDetector.StreetSide? = nil
+    var onHelpTap: (() -> Void)? = nil
+    /// Called when user taps refresh; should return fresh entries for this street.
+    var onRefresh: (() async -> [StreetCleaningEntry])? = nil
+
     @State private var selectedSide: SideDetector.StreetSide = .north
     @State private var isAutoDetecting: Bool = false
+    @State private var isRefreshing: Bool = false
+    @State private var refreshedEntries: [StreetCleaningEntry]? = nil
     @Environment(\.dismiss) private var dismiss
+
+    private var displayEntries: [StreetCleaningEntry] { refreshedEntries ?? entries }
 
     // MARK: - Side ordering
 
@@ -36,7 +45,7 @@ struct SidePickerView: View {
 
     var body: some View {
         ZStack {
-            Color.uberBlack.ignoresSafeArea()
+            Color.sweepyBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 CardHeader()
@@ -45,15 +54,38 @@ struct SidePickerView: View {
                     VStack(alignment: .leading, spacing: 20) {
 
                         // Street name header
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("WHICH SIDE?")
-                                .font(.system(size: 10, weight: .bold))
-                                .tracking(1.5)
-                                .foregroundStyle(Color.uberGray3)
-                            Text(streetName)
-                                .font(.system(size: 22, weight: .black))
-                                .tracking(-0.5)
-                                .foregroundStyle(Color.uberWhite)
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("WHICH SIDE?")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .tracking(1.5)
+                                    .foregroundStyle(Color.sweepyGray3)
+                                Text(streetName)
+                                    .font(.system(size: 22, weight: .black))
+                                    .tracking(-0.5)
+                                    .foregroundStyle(Color.sweepyWhite)
+                            }
+                            Spacer()
+                            if let onHelpTap {
+                                Button(action: onHelpTap) {
+                                    Text("?")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(Color.sweepyGray2)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 7)
+                                        .background(Color.sweepySurface2)
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            Button(action: { dismiss() }) {
+                                Text("Cancel")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Color.sweepyGray3)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 7)
+                                    .background(Color.sweepySurface2)
+                                    .clipShape(Capsule())
+                            }
                         }
                         .padding(.top, 20)
 
@@ -69,13 +101,20 @@ struct SidePickerView: View {
                         }
                         .animation(.spring(duration: 0.35), value: orderedSides)
 
+                        // CTA
+                        SweepyButton(
+                            title: ctaTitle,
+                            icon: "location.fill",
+                            action: { onConfirm(selectedSide, displayEntries) }
+                        )
+
                         // Auto-detect button
                         Button(action: autoDetect) {
                             HStack(spacing: 8) {
                                 if isAutoDetecting {
                                     ProgressView()
                                         .progressViewStyle(.circular)
-                                        .tint(Color.uberGray2)
+                                        .tint(Color.sweepyGray2)
                                         .scaleEffect(0.7)
                                 } else {
                                     Image(systemName: "location.north.fill")
@@ -84,32 +123,52 @@ struct SidePickerView: View {
                                 Text(isAutoDetecting ? "Detecting…" : "Use compass to auto-detect")
                                     .font(.system(size: 13, weight: .semibold))
                             }
-                            .foregroundStyle(Color.uberGray2)
+                            .foregroundStyle(Color.sweepyGray2)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
-                            .background(Color.uberSurface2)
+                            .background(Color.sweepySurface2)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .strokeBorder(Color.uberBorder, lineWidth: 1)
+                                    .strokeBorder(Color.sweepyBorder, lineWidth: 1)
                             )
                         }
 
                         // Schedule card for selected side
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("SCHEDULE")
-                                .font(.system(size: 10, weight: .bold))
-                                .tracking(1.5)
-                                .foregroundStyle(Color.uberGray3)
-                            ScheduleCardView(entries: entries, side: selectedSide)
+                            HStack {
+                                Text("SCHEDULE")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .tracking(1.5)
+                                    .foregroundStyle(Color.sweepyGray3)
+                                Spacer()
+                                // Show refresh when no schedule found for this side
+                                if entriesFor(selectedSide).isEmpty {
+                                    Button(action: { Task { @MainActor in await doRefresh() } }) {
+                                        HStack(spacing: 5) {
+                                            if isRefreshing {
+                                                ProgressView()
+                                                    .progressViewStyle(.circular)
+                                                    .tint(Color.sweepyGray2)
+                                                    .scaleEffect(0.65)
+                                            } else {
+                                                Image(systemName: "arrow.clockwise")
+                                                    .font(.system(size: 11, weight: .semibold))
+                                            }
+                                            Text(isRefreshing ? "Checking…" : "Retry")
+                                                .font(.system(size: 11, weight: .semibold))
+                                        }
+                                        .foregroundStyle(Color.sweepyGray2)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(Color.sweepySurface2)
+                                        .clipShape(Capsule())
+                                    }
+                                    .disabled(isRefreshing)
+                                }
+                            }
+                            ScheduleCardView(entries: displayEntries, side: selectedSide)
                         }
-
-                        // CTA
-                        UberButton(
-                            title: ctaTitle,
-                            icon: "location.fill",
-                            action: { onConfirm(selectedSide, entries) }
-                        )
                         .padding(.bottom, 8)
                     }
                     .padding(.horizontal, 20)
@@ -117,7 +176,13 @@ struct SidePickerView: View {
             }
         }
         .sensoryFeedback(.selection, trigger: selectedSide)
-        .onAppear { autoDetect() }
+        .onAppear {
+            if let side = initialSide {
+                selectedSide = side
+            } else {
+                autoDetect()
+            }
+        }
     }
 
     // MARK: - Side Button
@@ -129,22 +194,22 @@ struct SidePickerView: View {
             $0.timeIntervalSinceNow < 48 * 3600
         } ?? false
 
-        let accentColor: Color = isSoon ? Color.uberAmber : Color.uberGreen
-        let borderColor: Color = isSelected ? accentColor : Color.uberBorder
-        let bgColor: Color     = isSelected ? (isSoon ? Color.uberAmberDim : Color.uberGreenDim) : Color.uberSurface2
+        let accentColor: Color = isSoon ? Color.sweepyAmber : Color.sweepyGreen
+        let borderColor: Color = isSelected ? accentColor : Color.sweepyBorder
+        let bgColor: Color     = isSelected ? (isSoon ? Color.sweepyAmberDim : Color.sweepyGreenDim) : Color.sweepySurface2
 
         return Button(action: { withAnimation(.spring(duration: 0.25)) { selectedSide = side } }) {
             VStack(spacing: 6) {
                 Text(relativeLabel)
                     .font(.system(size: 28, weight: .black))
                     .tracking(-1)
-                    .foregroundStyle(isSelected ? accentColor : Color.uberWhite)
+                    .foregroundStyle(isSelected ? accentColor : Color.sweepyWhite)
                 Text(side.displayName + " side")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.uberWhite)
+                    .foregroundStyle(Color.sweepyWhite)
                 Text(side.addressParity)
                     .font(.system(size: 10))
-                    .foregroundStyle(Color.uberGray3)
+                    .foregroundStyle(Color.sweepyGray3)
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
@@ -167,7 +232,7 @@ struct SidePickerView: View {
             ))) {
                 Annotation("", coordinate: sideCoordinate) {
                     ZStack {
-                        Circle().fill(Color.uberGreen).frame(width: 28, height: 28)
+                        Circle().fill(Color.sweepyGreen).frame(width: 28, height: 28)
                         Image(systemName: "car.fill").font(.system(size: 14)).foregroundStyle(.black)
                     }
                 }
@@ -179,7 +244,7 @@ struct SidePickerView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.uberBorder, lineWidth: 1)
+                .strokeBorder(Color.sweepyBorder, lineWidth: 1)
         )
     }
 
@@ -197,7 +262,7 @@ struct SidePickerView: View {
 
     private func autoDetect() {
         isAutoDetecting = true
-        Task {
+        Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.2))
             let detected = SideDetector.detectSide(
                 heading: locationManager.heading,
@@ -213,7 +278,14 @@ struct SidePickerView: View {
     // MARK: - Helpers
 
     private func entriesFor(_ side: SideDetector.StreetSide) -> [StreetCleaningEntry] {
-        entries.filter { $0.normalizedSide == side }
+        displayEntries.filter { $0.normalizedSide == side }
+    }
+
+    private func doRefresh() async {
+        guard let onRefresh else { return }
+        isRefreshing = true
+        refreshedEntries = await onRefresh()
+        isRefreshing = false
     }
 
     private var ctaTitle: String {

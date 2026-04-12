@@ -7,7 +7,7 @@ struct CardHeader: View {
         VStack(spacing: 0) {
             // Drag handle
             Capsule()
-                .fill(Color.uberGray3.opacity(0.5))
+                .fill(Color.sweepyGray3.opacity(0.5))
                 .frame(width: 36, height: 4)
                 .padding(.top, 12)
                 .padding(.bottom, 12)
