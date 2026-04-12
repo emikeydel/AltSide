@@ -18,6 +18,7 @@ struct SidePickerView: View {
     @State private var isAutoDetecting: Bool = false
     @State private var isRefreshing: Bool = false
     @State private var refreshedEntries: [StreetCleaningEntry]? = nil
+    @State private var mapSegments: [BlockSegment] = []
     @Environment(\.dismiss) private var dismiss
 
     private var displayEntries: [StreetCleaningEntry] { refreshedEntries ?? entries }
@@ -182,7 +183,9 @@ struct SidePickerView: View {
             } else {
                 autoDetect()
             }
+            rebuildMapSegments()
         }
+        .onChange(of: refreshedEntries?.count) { _, _ in rebuildMapSegments() }
     }
 
     // MARK: - Side Button
@@ -226,29 +229,50 @@ struct SidePickerView: View {
     // MARK: - Mini Map
 
     private var miniMap: some View {
-        ZStack {
-            Map(initialPosition: .camera(MapCamera(
-                centerCoordinate: coordinate, distance: 100, heading: 0, pitch: 0
-            ))) {
-                Annotation("", coordinate: sideCoordinate) {
-                    ZStack {
-                        Circle().fill(Color.sweepyGreen).frame(width: 28, height: 28)
-                        Image(systemName: "car.fill").font(.system(size: 14)).foregroundStyle(.black)
-                    }
+        Map(initialPosition: .camera(MapCamera(
+            centerCoordinate: coordinate, distance: 400, heading: 0, pitch: 0
+        ))) {
+            // Block-face polylines
+            ForEach(mapSegments) { segment in
+                MapPolyline(coordinates: [segment.fromCoord, segment.toCoord])
+                    .stroke(
+                        segment.isSoon ? Color.sweepyAmber : Color.sweepyGreen,
+                        style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                    )
+            }
+            // Car icon snapped to the nearest segment centroid for the selected side
+            Annotation("", coordinate: carCoordinate) {
+                ZStack {
+                    Circle().fill(Color.sweepyGreen).frame(width: 28, height: 28)
+                    Image(systemName: "car.fill").font(.system(size: 14)).foregroundStyle(.black)
                 }
             }
-            .mapStyle(.standard)
-            .disabled(true)
         }
+        .mapStyle(.standard)
+        .mapControls {}
+        .disabled(true)
         .frame(height: 180)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(Color.sweepyBorder, lineWidth: 1)
         )
+        .animation(.spring(duration: 0.3), value: selectedSide)
     }
 
-    private var sideCoordinate: CLLocationCoordinate2D {
+    /// Car annotation coordinate: centroid of the nearest segment for `selectedSide`,
+    /// falling back to a small fixed offset when no segments are available.
+    private var carCoordinate: CLLocationCoordinate2D {
+        let sideSegs = mapSegments.filter { $0.side == selectedSide }
+        if let nearest = sideSegs.min(by: {
+            CLLocation(latitude: $0.centroid.latitude, longitude: $0.centroid.longitude)
+                .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+            < CLLocation(latitude: $1.centroid.latitude, longitude: $1.centroid.longitude)
+                .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+        }) {
+            return nearest.centroid
+        }
+        // Fallback: small offset toward the selected side
         let offset = 0.00007
         switch selectedSide {
         case .north: return CLLocationCoordinate2D(latitude: coordinate.latitude + offset, longitude: coordinate.longitude)
@@ -256,6 +280,10 @@ struct SidePickerView: View {
         case .east:  return CLLocationCoordinate2D(latitude: coordinate.latitude, longitude: coordinate.longitude + offset)
         case .west:  return CLLocationCoordinate2D(latitude: coordinate.latitude, longitude: coordinate.longitude - offset)
         }
+    }
+
+    private func rebuildMapSegments() {
+        mapSegments = CleaningDataManager.buildSegments(displayEntries, snappedCoordinate: coordinate)
     }
 
     // MARK: - Auto Detect

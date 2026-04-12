@@ -22,7 +22,10 @@ struct ScheduleCardView: View {
 
     private var daysUntil: Int {
         guard let next = nextCleaningDate else { return 99 }
-        return max(0, Calendar.current.dateComponents([.day], from: Date(), to: next).day ?? 0)
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let targetDay = cal.startOfDay(for: next)
+        return max(0, cal.dateComponents([.day], from: today, to: targetDay).day ?? 0)
     }
 
     private var isSoon: Bool { daysUntil < 2 }

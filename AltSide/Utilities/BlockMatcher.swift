@@ -41,6 +41,8 @@ enum BlockMatcher {
         // City/borough from addressRepresentations
         let cityName = item.addressRepresentations?.cityName ?? ""
         let borough  = mapToBorough(cityName: cityName, fullAddress: item.address?.fullAddress ?? "")
+        // Throw if the coordinate is outside NYC — avoids fetching "COUNTY ROAD 3100" etc.
+        guard !borough.isEmpty else { throw BlockMatcherError.noResult }
 
         let normalized  = normalize(streetName)
         let orientation = SideDetector.inferOrientation(from: streetName)
@@ -182,13 +184,27 @@ enum BlockMatcher {
     // MARK: - Private helpers
 
     /// Splits "123 West 79th Street, New York" → ("West 79th Street", "123")
+    /// Also handles address ranges like "369–389 Baltic Street" → ("Baltic Street", "369")
     private static func parseStreetAndNumber(from address: String) -> (street: String, number: String) {
         // Take only the part before the first comma
         let streetPart = address.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? address
         let words = streetPart.components(separatedBy: " ")
-        if let first = words.first, Int(first) != nil {
+        guard let first = words.first else { return (streetPart, "") }
+
+        // Plain number: "123 West 79th Street"
+        if Int(first) != nil {
             return (words.dropFirst().joined(separator: " "), first)
         }
+
+        // Address range with en-dash or hyphen: "369–389 Baltic Street", "369-389 Baltic Street"
+        // Extract the leading number from the range token for use as the house-number anchor.
+        let rangeSeparators = CharacterSet(charactersIn: "–—-")
+        let rangeParts = first.components(separatedBy: rangeSeparators)
+        if rangeParts.count == 2,
+           let leadingNum = rangeParts.first, Int(leadingNum) != nil {
+            return (words.dropFirst().joined(separator: " "), leadingNum)
+        }
+
         return (streetPart, "")
     }
 
@@ -199,7 +215,7 @@ enum BlockMatcher {
         if upper.contains("QUEENS")    { return "Queens" }
         if upper.contains("BRONX")     { return "Bronx" }
         if upper.contains("STATEN")    { return "Staten Island" }
-        return "Manhattan"
+        return ""
     }
 
     /// Finds the cross streets bounding the user's block by searching for the same

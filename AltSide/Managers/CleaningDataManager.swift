@@ -135,7 +135,9 @@ final class CleaningDataManager {
     ) -> [StreetCleaningEntry] {
         let (ux, uy) = wgs84ToStatePlane(lat: coordinate.latitude, lon: coordinate.longitude)
         return entries.filter { e in
-            guard let sx = e.signXCoord, let sy = e.signYCoord else { return false }
+            // Un-geocoded signs have no coordinates — always include them; they can't be
+            // filtered spatially but their schedule data is still valid for the street.
+            guard let sx = e.signXCoord, let sy = e.signYCoord else { return true }
             return sqrt((sx - ux) * (sx - ux) + (sy - uy) * (sy - uy)) <= thresholdFt
         }
     }
@@ -168,21 +170,215 @@ final class CleaningDataManager {
         return Array(closest.values)
     }
 
+    /// Groups entries into block-face segments for map display.
+    ///
+    /// • Faces with real sign coordinates use those coordinates exactly —
+    ///   no axis-flattening, so diagonal streets (e.g. Brooklyn's grid) render correctly.
+    /// • Faces with no sign coordinates are synthesised by shifting the opposite side's
+    ///   endpoints perpendicular to the actual street direction, preserving the angle.
+    /// • When neither side has coords a ±125 m axis-aligned stub is generated.
+    static func buildSegments(
+        _ entries: [StreetCleaningEntry],
+        snappedCoordinate: CLLocationCoordinate2D
+    ) -> [BlockSegment] {
+        struct FaceAcc {
+            var from: String, to: String
+            var side: SideDetector.StreetSide
+            var coords: [CLLocationCoordinate2D] = []
+            var entries: [StreetCleaningEntry] = []
+        }
+        var groups: [String: FaceAcc] = [:]
+        // All geocoded coords per block (both sides pooled) — used to derive street
+        // direction when synthesising a null-coord face.
+        var blockCoords: [String: [CLLocationCoordinate2D]] = [:]
+
+        for entry in entries {
+            guard let side = entry.normalizedSide else { continue }
+            let faceKey  = "\(entry.fromStreet)|\(entry.toStreet)|\(side)"
+            let blockKey = "\(entry.fromStreet)|\(entry.toStreet)"
+            if groups[faceKey] == nil {
+                groups[faceKey] = FaceAcc(from: entry.fromStreet, to: entry.toStreet, side: side)
+            }
+            groups[faceKey]!.entries.append(entry)
+            var coord: CLLocationCoordinate2D? = nil
+            if let lat = entry.signLatitude, let lon = entry.signLongitude {
+                coord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            } else if let sx = entry.signXCoord, let sy = entry.signYCoord {
+                let (lat, lon) = statePlaneNYLIToWgs84(x: sx, y: sy)
+                coord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            }
+            if let c = coord {
+                groups[faceKey]!.coords.append(c)
+                blockCoords[blockKey, default: []].append(c)
+            }
+        }
+
+        return groups.compactMap { (key, face) -> BlockSegment? in
+            let isEastWest = face.side == .north || face.side == .south
+
+            if !face.coords.isEmpty {
+                // ── Real sign coords ────────────────────────────────────────
+                // Use them as-is so diagonal streets stay at the correct angle.
+                let sorted = isEastWest
+                    ? face.coords.sorted { $0.longitude < $1.longitude }
+                    : face.coords.sorted { $0.latitude  < $1.latitude  }
+                let from = sorted.first!
+                let to   = sorted.last!
+                let centroid = CLLocationCoordinate2D(
+                    latitude:  (from.latitude  + to.latitude)  / 2,
+                    longitude: (from.longitude + to.longitude) / 2
+                )
+                return BlockSegment(id: key, fromCoord: from, toCoord: to, centroid: centroid,
+                                    side: face.side, fromStreet: face.from, toStreet: face.to,
+                                    entries: face.entries)
+            }
+
+            // ── Null-coord face: synthesise ─────────────────────────────────
+            let blockKey  = "\(face.from)|\(face.to)"
+            let allCoords = blockCoords[blockKey] ?? []
+
+            // Need at least 2 real coords from the opposite side to derive street direction.
+            // Without them we can't place the line accurately, so skip rather than draw a stub.
+            guard allCoords.count >= 2 else { return nil }
+
+            // Derive endpoints from the opposite side's coords (preserves street angle).
+            let sorted = isEastWest
+                ? allCoords.sorted { $0.longitude < $1.longitude }
+                : allCoords.sorted { $0.latitude  < $1.latitude  }
+            let p1 = sorted.first!
+            let p2 = sorted.last!
+
+            // Shift p1/p2 perpendicular to the segment toward this side (~8 m kerb offset).
+            let (from, to) = kerbOffset(p1: p1, p2: p2, side: face.side, meters: 8.0)
+            let centroid = CLLocationCoordinate2D(
+                latitude:  (from.latitude  + to.latitude)  / 2,
+                longitude: (from.longitude + to.longitude) / 2
+            )
+            return BlockSegment(id: key, fromCoord: from, toCoord: to, centroid: centroid,
+                                side: face.side, fromStreet: face.from, toStreet: face.to,
+                                entries: face.entries)
+        }
+    }
+
+    /// Translates the segment `p1`→`p2` by `meters` perpendicular to its direction,
+    /// toward `side`.  Uses true metric-space perpendicular so diagonal streets are handled
+    /// correctly — no axis-aligned approximation.
+    private static func kerbOffset(
+        p1: CLLocationCoordinate2D,
+        p2: CLLocationCoordinate2D,
+        side: SideDetector.StreetSide,
+        meters: Double
+    ) -> (CLLocationCoordinate2D, CLLocationCoordinate2D) {
+        let cosLat = cos((p1.latitude + p2.latitude) / 2 * .pi / 180)
+        // Street direction in locally-flat (east, north) space, both axes in degree-equivalents.
+        let dNorth = p2.latitude  - p1.latitude
+        let dEast  = (p2.longitude - p1.longitude) * cosLat
+        let len    = sqrt(dNorth * dNorth + dEast * dEast)
+
+        let offsetDeg = meters / 111_139.0   // metres → ° latitude-equivalent
+
+        // Left-hand (CCW 90°) perpendicular of (dEast, dNorth) is (-dNorth, dEast).
+        let perpNorth: Double
+        let perpEast:  Double
+        if len > 1e-9 {
+            perpNorth =  dEast  / len
+            perpEast  = -dNorth / len
+        } else {
+            // Degenerate (coincident points) — axis-aligned fallback.
+            switch side {
+            case .north: perpNorth =  1; perpEast =  0
+            case .south: perpNorth = -1; perpEast =  0
+            case .east:  perpNorth =  0; perpEast =  1
+            case .west:  perpNorth =  0; perpEast = -1
+            }
+        }
+
+        // Flip so the offset points toward the requested side.
+        let isEastWest    = (side == .north || side == .south)
+        let wantsPositive = (side == .north || side == .east)
+        let primaryCmp    = isEastWest ? perpNorth : perpEast
+        let flip: Double  = (wantsPositive == (primaryCmp >= 0)) ? 1 : -1
+
+        let oLat = flip * perpNorth * offsetDeg
+        let oLon = flip * perpEast  * offsetDeg / cosLat
+
+        return (
+            CLLocationCoordinate2D(latitude: p1.latitude + oLat, longitude: p1.longitude + oLon),
+            CLLocationCoordinate2D(latitude: p2.latitude + oLat, longitude: p2.longitude + oLon)
+        )
+    }
+
     // MARK: - Coordinate conversion
 
     /// Approximate WGS84 → EPSG:2263 (NY State Plane Long Island, US survey feet).
-    /// refX empirically calibrated from geocoded NYC parking sign coordinates
-    /// (Bergen St Cobble Hill signs confirmed at x≈986000–987000 in the dataset).
     /// Accuracy ≈ ±500 ft across NYC — sufficient for the ±1500 ft bounding box query.
     static func wgs84ToStatePlane(lat: Double, lon: Double) -> (x: Double, y: Double) {
         let refLat = 40.7061, refLon = -73.9969
         let refX = 985_000.0, refY = 196_920.0
         let ftPerDegLat = 364_000.0
-        let ftPerDegLon = cos(refLat * .pi / 180) * 364_000.0  // ≈ 275,500 ft/deg
+        let ftPerDegLon = cos(refLat * .pi / 180) * 364_000.0
         return (
             x: refX + (lon - refLon) * ftPerDegLon,
             y: refY + (lat - refLat) * ftPerDegLat
         )
+    }
+
+    /// Accurate EPSG:2263 (NY State Plane Long Island) → WGS84 inverse.
+    /// Implements the full Lambert Conformal Conic 2SP inverse (EPSG method 9802).
+    /// Sub-meter accuracy anywhere in NYC — replaces the ±500 ft linear approximation
+    /// for converting dataset sign coordinates back to lat/lon for map display.
+    static func statePlaneNYLIToWgs84(x: Double, y: Double) -> (lat: Double, lon: Double) {
+        // GRS80 ellipsoid (same as WGS84 for practical purposes)
+        let a  = 6_378_137.0
+        let f  = 1.0 / 298.257222101
+        let e2 = 2*f - f*f
+        let e  = sqrt(e2)
+
+        // EPSG:2263 Lambert Conformal Conic 2SP parameters (all angles in radians)
+        let phi1 = (40.0 + 40.0/60.0) * .pi / 180  // 40°40'N — first standard parallel
+        let phi2 = (41.0 +  2.0/60.0) * .pi / 180  // 41°02'N — second standard parallel
+        let phi0 = (40.0 + 10.0/60.0) * .pi / 180  // 40°10'N — latitude of false origin
+        let lam0 = -74.0               * .pi / 180  // 74°W    — longitude of false origin
+        // EPSG:2263 false easting is 300 000 METRES (not 300 000 feet).
+        // The dataset stores X/Y in US survey feet, so convert input to metres first,
+        // then subtract the 300 000 m false easting to get the true eastward offset.
+        let FE_m  = 300_000.0                       // false easting, metres
+        let ftToM = 0.304800609601219               // US survey foot → metre
+
+        // Conformal latitude factor m and LCC t-factor
+        func mf(_ phi: Double) -> Double {
+            cos(phi) / sqrt(1.0 - e2 * sin(phi) * sin(phi))
+        }
+        func tf(_ phi: Double) -> Double {
+            let s = sin(phi)
+            return tan(.pi/4.0 - phi/2.0) / pow((1.0 - e*s) / (1.0 + e*s), e/2.0)
+        }
+
+        let m1 = mf(phi1), m2 = mf(phi2)
+        let t1 = tf(phi1), t2 = tf(phi2), t0 = tf(phi0)
+        // Use Foundation.log to avoid shadowing by the file-level `log` Logger instance
+        let n  = (Foundation.log(m1) - Foundation.log(m2)) / (Foundation.log(t1) - Foundation.log(t2))
+        let bigF = m1 / (n * pow(t1, n))
+        let r0   = a * bigF * pow(t0, n)   // metres
+
+        // Input: US survey feet → metres, apply false-origin offset
+        let easting  = x * ftToM - FE_m   // FN = 0 for EPSG:2263
+        let northing = y * ftToM
+
+        let rPrime     = (n >= 0 ? 1.0 : -1.0) * sqrt(easting*easting + (r0 - northing)*(r0 - northing))
+        let tPrime     = pow(rPrime / (a * bigF), 1.0/n)
+        let thetaPrime = atan2(easting, r0 - northing)
+
+        // Iterative geodetic latitude solution (converges in ≤ 5 steps)
+        var phi = .pi/2.0 - 2.0*atan(tPrime)
+        for _ in 0..<10 {
+            let s    = sin(phi)
+            let prev = phi
+            phi = .pi/2.0 - 2.0*atan(tPrime * pow((1.0 - e*s) / (1.0 + e*s), e/2.0))
+            if abs(phi - prev) < 1e-12 { break }
+        }
+        let lam = thetaPrime / n + lam0
+        return (lat: phi * 180.0 / .pi, lon: lam * 180.0 / .pi)
     }
 
     // MARK: - Dataset name formatting
@@ -230,7 +426,7 @@ final class CleaningDataManager {
             .replacingOccurrences(of: " ", with: "_")
             .replacingOccurrences(of: "|", with: "_")
             .replacingOccurrences(of: "/", with: "_")
-        return support.appendingPathComponent("nyc_nfid_v8_\(safe).json")
+        return support.appendingPathComponent("nyc_nfid_v10_\(safe).json")
     }
 
     private func saveToDisk(_ entries: [StreetCleaningEntry], key: String) {
@@ -292,16 +488,12 @@ private struct NfidSignRecord: Decodable {
         signDescription = (try? c.decode(String.self, forKey: .signDescription)) ?? ""
         borough         = (try? c.decode(String.self, forKey: .borough))         ?? ""
         // The API returns numbers; tolerate both Number and String encoding
-        if let d = try? c.decode(Double.self, forKey: .signXCoord) {
-            signXCoord = d
-        } else {
-            signXCoord = (try? c.decode(String.self, forKey: .signXCoord)).flatMap { Double($0) }
+        func decodeDouble(_ key: CodingKeys) -> Double? {
+            if let d = try? c.decode(Double.self, forKey: key) { return d }
+            return (try? c.decode(String.self, forKey: key)).flatMap { Double($0) }
         }
-        if let d = try? c.decode(Double.self, forKey: .signYCoord) {
-            signYCoord = d
-        } else {
-            signYCoord = (try? c.decode(String.self, forKey: .signYCoord)).flatMap { Double($0) }
-        }
+        signXCoord = decodeDouble(.signXCoord)
+        signYCoord = decodeDouble(.signYCoord)
     }
 
     /// Expands one sign record into zero or more StreetCleaningEntry objects (one per cleaning day).
@@ -326,7 +518,9 @@ private struct NfidSignRecord: Decodable {
                 toMinutes: schedule.toMinutes,
                 borough: borough,
                 signXCoord: signXCoord,
-                signYCoord: signYCoord
+                signYCoord: signYCoord,
+                signLatitude: nil,
+                signLongitude: nil
             )
         }
     }

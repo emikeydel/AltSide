@@ -18,6 +18,8 @@ struct StreetCleaningEntry: Codable, Identifiable {
     let borough: String         // "Manhattan", "Brooklyn", etc.
     let signXCoord: Double?     // NY State Plane (EPSG:2263) X, US survey feet
     let signYCoord: Double?     // NY State Plane (EPSG:2263) Y, US survey feet
+    let signLatitude: Double?   // WGS84 latitude of sign (from API)
+    let signLongitude: Double?  // WGS84 longitude of sign (from API)
 
     // All stored entries are active — we only cache current signs.
     var isActive: Bool { true }

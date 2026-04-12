@@ -51,6 +51,11 @@ struct MainMapView: View {
     @State private var overrideCoordinate: CLLocationCoordinate2D? = nil
     /// Tracks the map center coordinate as the user drags — always the intended save location.
     @State private var pinCoordinate: CLLocationCoordinate2D? = nil
+    /// Block-face segments for the current street — drawn as coloured polylines on the map.
+    @State private var blockSegments: [BlockSegment] = []
+    /// Grid cells (~330 m) for which background segments have already been loaded.
+    /// Prevents redundant fetches when the user stays in the same area.
+    @State private var loadedSegmentCells: Set<String> = []
 
     /// The coordinate used for saving: address-picker override → pin on map → GPS.
     private var activeCoordinate: CLLocationCoordinate2D {
@@ -176,6 +181,15 @@ struct MainMapView: View {
 
     private var map: some View {
         Map(position: $cameraPosition) {
+            // Block-face polylines — green = safe, amber = cleaning soon
+            ForEach(blockSegments) { segment in
+                MapPolyline(coordinates: [segment.fromCoord, segment.toCoord])
+                    .stroke(
+                        segment.isSoon ? Color.sweepyAmber : Color.sweepyGreen,
+                        style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                    )
+            }
+
             if overrideCoordinate == nil {
                 UserAnnotation()
             }
@@ -215,6 +229,12 @@ struct MainMapView: View {
         .onMapCameraChange(frequency: .continuous) { @MainActor context in
             guard savedSpot == nil, !locationManager.scoutModeActive else { return }
             pinCoordinate = context.camera.centerCoordinate
+        }
+        .onMapCameraChange(frequency: .onEnd) { @MainActor context in
+            guard savedSpot == nil, !locationManager.scoutModeActive else { return }
+            Task { @MainActor in
+                await loadBackgroundSegments(from: context.camera.centerCoordinate)
+            }
         }
         .ignoresSafeArea()
     }
@@ -300,18 +320,38 @@ struct MainMapView: View {
                         locationManager: locationManager,
                         cleaningDataManager: cleaningDataManager,
                         onHelpTap: { showWelcome = true },
+                        onSegmentsLoaded: { segs in blockSegments = segs },
                         onSaveWithSide: { side, entries, street in
-                            streetEntries = entries
                             resolvedStreet = street
                             scoutInitialSide = side
+                            let segments = blockSegments
                             Task { @MainActor in
-                                let best = await BlockMatcher.findBestBlock(
-                                    entries: entries,
-                                    streetName: street.normalizedName,
-                                    borough: street.borough,
-                                    userCoordinate: activeCoordinate
-                                )
-                                bestBlock = best
+                                let snapped = street.snappedCoordinate
+                                let userLoc = CLLocation(latitude: snapped.latitude, longitude: snapped.longitude)
+                                let nearestSeg = segments.min {
+                                    userLoc.distance(from: CLLocation(latitude: $0.centroid.latitude, longitude: $0.centroid.longitude))
+                                    < userLoc.distance(from: CLLocation(latitude: $1.centroid.latitude, longitude: $1.centroid.longitude))
+                                }
+                                if let seg = nearestSeg {
+                                    bestBlock = (from: seg.fromStreet, to: seg.toStreet)
+                                    let blockFiltered = entries.filter { e in
+                                        (BlockMatcher.fuzzyMatch(e.fromStreet, seg.fromStreet) && BlockMatcher.fuzzyMatch(e.toStreet, seg.toStreet)) ||
+                                        (BlockMatcher.fuzzyMatch(e.fromStreet, seg.toStreet)   && BlockMatcher.fuzzyMatch(e.toStreet, seg.fromStreet))
+                                    }
+                                    streetEntries = CleaningDataManager.closestSignDedup(
+                                        blockFiltered.isEmpty ? entries : blockFiltered,
+                                        coordinate: snapped
+                                    )
+                                } else {
+                                    let best = await BlockMatcher.findBestBlock(
+                                        entries: entries,
+                                        streetName: street.normalizedName,
+                                        borough: street.borough,
+                                        userCoordinate: activeCoordinate
+                                    )
+                                    bestBlock = best
+                                    streetEntries = entries
+                                }
                                 withAnimation { locationManager.scoutModeActive = false }
                                 activeModal = .savePicker
                             }
@@ -529,6 +569,11 @@ struct MainMapView: View {
             let cam = MapCameraPosition.camera(MapCamera(centerCoordinate: coord, distance: 400))
             withAnimation { cameraPosition = cam }
         }
+        // Load coloured block segments in the background so the map shows schedule info immediately.
+        // Debounced inside loadBackgroundSegments — only re-fetches after moving > 100 m.
+        if savedSpot == nil {
+            Task { @MainActor in await loadBackgroundSegments(from: locationManager.coordinate) }
+        }
     }
 
     private func handleScoutModeActiveChange(_: Bool, _ active: Bool) {
@@ -560,30 +605,56 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
                 )
 
                 let nearby = CleaningDataManager.proximityFiltered(allEntries, coordinate: snapped)
-                let entries = nearby.isEmpty ? allEntries : nearby
-                let deduped = CleaningDataManager.closestSignDedup(entries, coordinate: snapped)
+                let pool = nearby.isEmpty ? allEntries : nearby
 
-                let best = await BlockMatcher.findBestBlock(
-                    entries: deduped,
-                    streetName: street.normalizedName,
-                    borough: street.borough,
-                    userCoordinate: saveCoord ?? activeCoordinate
-                )
-                resolvedStreet = street
-                bestBlock = best
-                // If findBestBlock identified the specific block segment, filter entries to
-                // only that block. This removes signs from adjacent blocks that share the same
-                // street name but have different schedules (e.g. a Wednesday sign from the
-                // next block over that would otherwise override the correct Thursday schedule).
-                if let best = best {
-                    let blockEntries = deduped.filter { e in
-                        (BlockMatcher.fuzzyMatch(e.fromStreet, best.from) && BlockMatcher.fuzzyMatch(e.toStreet, best.to)) ||
-                        (BlockMatcher.fuzzyMatch(e.fromStreet, best.to)   && BlockMatcher.fuzzyMatch(e.toStreet, best.from))
-                    }
-                    streetEntries = blockEntries.isEmpty ? deduped : blockEntries
-                } else {
-                    streetEntries = deduped
+                // Build block-face segments from sign coordinates (for display + block matching).
+                let segments = CleaningDataManager.buildSegments(pool, snappedCoordinate: snapped)
+                let userLoc = CLLocation(latitude: snapped.latitude, longitude: snapped.longitude)
+
+                // Find the block face whose centroid is closest to the snapped coordinate.
+                // This identifies the user's specific block without extra geocoding calls.
+                let nearestSeg = segments.min {
+                    userLoc.distance(from: CLLocation(latitude: $0.centroid.latitude, longitude: $0.centroid.longitude))
+                    < userLoc.distance(from: CLLocation(latitude: $1.centroid.latitude, longitude: $1.centroid.longitude))
                 }
+
+                let blockFiltered: [StreetCleaningEntry]
+                let blockFrom: String
+                let blockTo: String
+
+                if let seg = nearestSeg {
+                    // Filter pool to entries on this specific block face (includes null-coord entries)
+                    blockFiltered = pool.filter { e in
+                        (BlockMatcher.fuzzyMatch(e.fromStreet, seg.fromStreet) && BlockMatcher.fuzzyMatch(e.toStreet, seg.toStreet)) ||
+                        (BlockMatcher.fuzzyMatch(e.fromStreet, seg.toStreet)   && BlockMatcher.fuzzyMatch(e.toStreet, seg.fromStreet))
+                    }
+                    blockFrom = seg.fromStreet
+                    blockTo   = seg.toStreet
+                } else {
+                    // No geocoded signs — fall back to geocoding-based block matching
+                    let best = await BlockMatcher.findBestBlock(
+                        entries: pool,
+                        streetName: street.normalizedName,
+                        borough: street.borough,
+                        userCoordinate: saveCoord ?? activeCoordinate
+                    )
+                    blockFiltered = best.map { b in pool.filter { e in
+                        (BlockMatcher.fuzzyMatch(e.fromStreet, b.from) && BlockMatcher.fuzzyMatch(e.toStreet, b.to)) ||
+                        (BlockMatcher.fuzzyMatch(e.fromStreet, b.to)   && BlockMatcher.fuzzyMatch(e.toStreet, b.from))
+                    }} ?? pool
+                    blockFrom = best?.from ?? ""
+                    blockTo   = best?.to   ?? ""
+                }
+
+                let deduped = CleaningDataManager.closestSignDedup(
+                    blockFiltered.isEmpty ? pool : blockFiltered,
+                    coordinate: snapped
+                )
+
+                resolvedStreet = street
+                bestBlock = blockFrom.isEmpty ? nil : (from: blockFrom, to: blockTo)
+                streetEntries = deduped
+                blockSegments = segments
             } catch {
                 resolvedStreet = BlockMatcher.ResolvedStreet(
                     name: "Current Location",
@@ -627,7 +698,7 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
         let crossTo   = bestBlock.map { titleCase($0.to)   } ?? street.crossStreetTo
 
         let spot = ParkingSpot(
-            coordinate: activeCoordinate,
+            coordinate: street.snappedCoordinate,
             streetName: street.name,
             crossStreetFrom: crossFrom,
             crossStreetTo: crossTo,
@@ -652,6 +723,78 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
     }
 
 
+
+    /// Loads block-face segments for `coordinate` and a 3×3 grid of nearby sample points,
+    /// then merges the results into `blockSegments`.
+    ///
+    /// Deduplication is cell-based: the map is divided into ~330 m cells and each cell is
+    /// fetched at most once per session.  Calling this on every map-camera-change is safe —
+    /// cells already loaded return immediately without any network work.
+    private func loadBackgroundSegments(from coordinate: CLLocationCoordinate2D) async {
+        // Skip entirely if the origin is outside NYC.
+        guard CleaningDataManager.borough(for: coordinate) != "" else { return }
+
+        // ~330 m cell — larger than a NYC block so nearby pans reuse the same cell.
+        let cellSize = 0.003
+        func cellKey(_ c: CLLocationCoordinate2D) -> String {
+            "\(Int(c.latitude  / cellSize))|\(Int(c.longitude / cellSize))"
+        }
+
+        let key = cellKey(coordinate)
+        guard !loadedSegmentCells.contains(key) else { return }
+        loadedSegmentCells.insert(key)
+
+        // 3×3 grid at 250 m spacing — covers ≈ 500 m in every direction from the origin.
+        // Each point typically resolves to a different street (parallel or perpendicular),
+        // so 9 simultaneous geocoding + schedule calls populate a meaningful chunk of the map.
+        let step   = 250.0
+        let latOff = step / 111_139.0
+        let lonOff = step / (111_139.0 * cos(coordinate.latitude * .pi / 180))
+        let offsets: [(Double, Double)] = [
+            (-latOff, -lonOff), (-latOff, 0), (-latOff,  lonOff),
+            (      0, -lonOff), (      0, 0), (      0,  lonOff),
+            ( latOff, -lonOff), ( latOff, 0), ( latOff,  lonOff),
+        ]
+
+        var collected: [BlockSegment] = []
+        await withTaskGroup(of: [BlockSegment].self) { group in
+            for (dlat, dlon) in offsets {
+                let sample = CLLocationCoordinate2D(
+                    latitude:  coordinate.latitude  + dlat,
+                    longitude: coordinate.longitude + dlon
+                )
+                // Skip sample points that fall outside NYC borough bounds.
+                guard CleaningDataManager.borough(for: sample) != "" else { continue }
+                group.addTask { [mgr = cleaningDataManager] in
+                    guard let street = try? await BlockMatcher.resolve(coordinate: sample) else { return [] }
+                    // Double-check: resolved borough must be a real NYC borough.
+                    guard !street.borough.isEmpty else { return [] }
+                    let entries = await mgr.loadSchedule(
+                        streetName: street.normalizedName,
+                        borough: street.borough,
+                        coordinate: street.snappedCoordinate
+                    )
+                    let nearby = CleaningDataManager.proximityFiltered(entries, coordinate: street.snappedCoordinate)
+                    let pool = nearby.isEmpty ? entries : nearby
+                    let segments = CleaningDataManager.buildSegments(pool, snappedCoordinate: street.snappedCoordinate)
+                    // Drop segments whose centroid is more than 400 m from the fetch point —
+                    // eliminates stray lines from distant blocks on long streets.
+                    let anchor = CLLocation(latitude: street.snappedCoordinate.latitude,
+                                           longitude: street.snappedCoordinate.longitude)
+                    return segments.filter {
+                        CLLocation(latitude: $0.centroid.latitude, longitude: $0.centroid.longitude)
+                            .distance(from: anchor) < 400
+                    }
+                }
+            }
+            for await segs in group { collected.append(contentsOf: segs) }
+        }
+
+        var seen = Set<String>(blockSegments.map { $0.id })
+        let newSegs = collected.filter { seen.insert($0.id).inserted }
+        guard !newSegs.isEmpty else { return }
+        blockSegments.append(contentsOf: newSegs)
+    }
 
     private func syncWidgetData() {
         syncWidgetData(with: spots.first)
@@ -693,6 +836,8 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
         spot.isActive = false
         try? modelContext.save()
         overrideCoordinate = nil
+        blockSegments = []
+        loadedSegmentCells = []   // force reload when map reappears
     }
 
     private func navigateToCar(_ spot: ParkingSpot) {

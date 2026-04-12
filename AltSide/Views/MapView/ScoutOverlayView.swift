@@ -6,11 +6,13 @@ struct ScoutBottomPanel: View {
     var locationManager: LocationManager
     var cleaningDataManager: CleaningDataManager
     var onHelpTap: (() -> Void)? = nil
+    var onSegmentsLoaded: (([BlockSegment]) -> Void)? = nil
     let onSaveWithSide: (SideDetector.StreetSide, [StreetCleaningEntry], BlockMatcher.ResolvedStreet) -> Void
 
     @State private var resolvedStreet: BlockMatcher.ResolvedStreet?
     @State private var allEntries: [StreetCleaningEntry] = []
     @State private var nearbyEntries: [StreetCleaningEntry] = []
+    @State private var currentSegments: [BlockSegment] = []
     @State private var isResolving = false
     @State private var lastResolvedCoordinate: CLLocationCoordinate2D? = nil
 
@@ -217,7 +219,11 @@ struct ScoutBottomPanel: View {
         let sideEntries = entries.filter { $0.normalizedSide == side }
         let nextEntry = sideEntries.min { ($0.nextCleaningDate() ?? .distantFuture) < ($1.nextCleaningDate() ?? .distantFuture) }
         let nextDate = nextEntry?.nextCleaningDate()
-        let daysUntil = nextDate.map { max(0, Calendar.current.dateComponents([.day], from: Date(), to: $0).day ?? 0) } ?? 99
+        let daysUntil: Int = {
+            guard let nd = nextDate else { return 99 }
+            let cal = Calendar.current
+            return max(0, cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: nd)).day ?? 0)
+        }()
         let isSoon = daysUntil < 2
         let accentColor: Color = isSoon ? Color.sweepyAmber : Color.sweepyGreen
 
@@ -307,9 +313,46 @@ struct ScoutBottomPanel: View {
             )
             resolvedStreet = street
             allEntries = entries
+
             let nearby = CleaningDataManager.proximityFiltered(entries, coordinate: street.snappedCoordinate)
             let pool = nearby.isEmpty ? entries : nearby
-            nearbyEntries = CleaningDataManager.closestSignDedup(pool, coordinate: street.snappedCoordinate)
+            let segments = CleaningDataManager.buildSegments(pool, snappedCoordinate: street.snappedCoordinate)
+            let userLoc = CLLocation(latitude: street.snappedCoordinate.latitude, longitude: street.snappedCoordinate.longitude)
+
+            // Per-side block-face filtering: for each side, find its nearest segment and keep
+            // only entries on that specific block. Entries from adjacent blocks with unique
+            // weekdays would otherwise survive closestSignDedup and show wrong schedules.
+            let relevantSides: [SideDetector.StreetSide] = street.orientation == .eastWest
+                ? [.north, .south] : [.east, .west]
+            var blockFiltered: [StreetCleaningEntry] = []
+            for side in relevantSides {
+                let sideSegs = segments.filter { $0.side == side }
+                if let nearest = sideSegs.min(by: {
+                    userLoc.distance(from: CLLocation(latitude: $0.centroid.latitude, longitude: $0.centroid.longitude))
+                    < userLoc.distance(from: CLLocation(latitude: $1.centroid.latitude, longitude: $1.centroid.longitude))
+                }) {
+                    blockFiltered += pool.filter { e in
+                        guard e.normalizedSide == side else { return false }
+                        return (BlockMatcher.fuzzyMatch(e.fromStreet, nearest.fromStreet) && BlockMatcher.fuzzyMatch(e.toStreet, nearest.toStreet))
+                            || (BlockMatcher.fuzzyMatch(e.fromStreet, nearest.toStreet)   && BlockMatcher.fuzzyMatch(e.toStreet, nearest.fromStreet))
+                    }
+                } else {
+                    blockFiltered += pool.filter { $0.normalizedSide == side }
+                }
+            }
+
+            nearbyEntries = CleaningDataManager.closestSignDedup(
+                blockFiltered.isEmpty ? pool : blockFiltered,
+                coordinate: street.snappedCoordinate
+            )
+            // Drop segments whose centroid is > 400 m from the user — removes stray lines
+            // from distant blocks on long streets.
+            let filteredSegments = segments.filter {
+                userLoc.distance(from: CLLocation(latitude: $0.centroid.latitude,
+                                                   longitude: $0.centroid.longitude)) < 400
+            }
+            currentSegments = filteredSegments
+            onSegmentsLoaded?(filteredSegments)
             lastResolvedCoordinate = coord
             prefetchNearby(from: street.snappedCoordinate)
         } catch {}
