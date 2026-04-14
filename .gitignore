@@ -21,3 +21,6 @@ Pods/
 
 # macOS
 .DS_Store
+
+# API Keys
+AltSide/Secrets.swift

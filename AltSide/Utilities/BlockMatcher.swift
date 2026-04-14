@@ -85,6 +85,10 @@ enum BlockMatcher {
             // ST only at end of string: "WEST 34 ST" → "WEST 34 STREET"
             // Avoids "ST NICHOLAS" → "STREET NICHOLAS" (Saint abbreviation at start)
             (#"\bST\.?$"#, "STREET"),
+            // Directional prefix abbreviations before a digit: "W 79" → "WEST 79", "E 14" → "EAST 14"
+            // Only when followed by whitespace+digit so "AVENUE W" is not changed.
+            (#"\bW(?=\s+\d)"#, "WEST"),
+            (#"\bE(?=\s+\d)"#, "EAST"),
         ]
         for (pattern, replacement) in abbrevs {
             if let re = try? NSRegularExpression(pattern: pattern) {

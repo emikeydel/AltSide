@@ -5,6 +5,7 @@ import MapKit
 /// at a specific address rather than their current GPS location.
 struct AddressPickerSheet: View {
     let onLocationSelected: (CLLocationCoordinate2D) -> Void
+    var onHelpTap: (() -> Void)? = nil
 
     @State private var searchText = ""
     @State private var results: [MKMapItem] = []
@@ -21,18 +22,41 @@ struct AddressPickerSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             // Header
-            VStack(spacing: 4) {
-                Text("WHERE DID YOU PARK?")
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(1.5)
-                    .foregroundStyle(Color.sweepyGray3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("WHERE DID YOU PARK?")
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(1.5)
+                        .foregroundStyle(Color.sweepyGray3)
 
-                Text("Enter your address")
-                    .font(.system(size: 24, weight: .black))
-                    .tracking(-0.5)
-                    .foregroundStyle(Color.sweepyWhite)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Enter your address")
+                        .font(.system(size: 24, weight: .black))
+                        .tracking(-0.5)
+                        .foregroundStyle(Color.sweepyWhite)
+                }
+                Spacer()
+                HStack(spacing: 8) {
+                    if let onHelpTap {
+                        Button(action: onHelpTap) {
+                            Text("?")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Color.sweepyGray2)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(Color.sweepySurface2)
+                                .clipShape(Capsule())
+                        }
+                    }
+                    Button(action: { dismiss() }) {
+                        Text("Exit")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.sweepyGray3)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(Color.sweepySurface2)
+                            .clipShape(Capsule())
+                    }
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 24)

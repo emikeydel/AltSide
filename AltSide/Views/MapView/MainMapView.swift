@@ -34,12 +34,16 @@ struct MainMapView: View {
     var notificationManager: NotificationManager
     var liveActivityManager: LiveActivityManager
 
-    @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
+    @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .camera(MapCamera(
+        centerCoordinate: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
+        distance: 50_000
+    )))
     @State private var activeModal: ModalSheet?
     @State private var pendingSpot: ParkingSpot?
     @State private var resolvedStreet: BlockMatcher.ResolvedStreet?
     @State private var streetEntries: [StreetCleaningEntry] = []
     @State private var bestBlock: (from: String, to: String)?
+    @State private var streetBearing: Double? = nil
     @State private var isResolvingStreet = false
     @State private var isBottomPanelExpanded = false
     @State private var screenHeight: CGFloat = 800
@@ -51,12 +55,6 @@ struct MainMapView: View {
     @State private var overrideCoordinate: CLLocationCoordinate2D? = nil
     /// Tracks the map center coordinate as the user drags — always the intended save location.
     @State private var pinCoordinate: CLLocationCoordinate2D? = nil
-    /// Block-face segments for the current street — drawn as coloured polylines on the map.
-    @State private var blockSegments: [BlockSegment] = []
-    /// Grid cells (~330 m) for which background segments have already been loaded.
-    /// Prevents redundant fetches when the user stays in the same area.
-    @State private var loadedSegmentCells: Set<String> = []
-
     /// The coordinate used for saving: address-picker override → pin on map → GPS.
     private var activeCoordinate: CLLocationCoordinate2D {
         overrideCoordinate ?? pinCoordinate ?? locationManager.coordinate
@@ -165,14 +163,17 @@ struct MainMapView: View {
             modalContent(for: modal)
         }
         .sheet(isPresented: $showAddressPicker) {
-            AddressPickerSheet { coordinate in
-                overrideCoordinate = coordinate
-                let cam = MapCameraPosition.camera(MapCamera(centerCoordinate: coordinate, distance: 400))
-                cameraPosition = cam
-                motionManager.startMonitoring()
-                bluetoothManager.startMonitoring()
-                triggerSaveFlow()
-            }
+            AddressPickerSheet(
+                onLocationSelected: { coordinate in
+                    overrideCoordinate = coordinate
+                    let cam = MapCameraPosition.camera(MapCamera(centerCoordinate: coordinate, distance: 400))
+                    cameraPosition = cam
+                    motionManager.startMonitoring()
+                    bluetoothManager.startMonitoring()
+                    triggerSaveFlow()
+                },
+                onHelpTap: { showWelcome = true }
+            )
             .presentationDetents([.large])
         }
     }
@@ -181,15 +182,6 @@ struct MainMapView: View {
 
     private var map: some View {
         Map(position: $cameraPosition) {
-            // Block-face polylines — green = safe, amber = cleaning soon
-            ForEach(blockSegments) { segment in
-                MapPolyline(coordinates: [segment.fromCoord, segment.toCoord])
-                    .stroke(
-                        segment.isSoon ? Color.sweepyAmber : Color.sweepyGreen,
-                        style: StrokeStyle(lineWidth: 5, lineCap: .round)
-                    )
-            }
-
             if overrideCoordinate == nil {
                 UserAnnotation()
             }
@@ -230,12 +222,6 @@ struct MainMapView: View {
             guard savedSpot == nil, !locationManager.scoutModeActive else { return }
             pinCoordinate = context.camera.centerCoordinate
         }
-        .onMapCameraChange(frequency: .onEnd) { @MainActor context in
-            guard savedSpot == nil, !locationManager.scoutModeActive else { return }
-            Task { @MainActor in
-                await loadBackgroundSegments(from: context.camera.centerCoordinate)
-            }
-        }
         .ignoresSafeArea()
     }
 
@@ -263,24 +249,23 @@ struct MainMapView: View {
     private var centerPinOverlay: some View {
         VStack(spacing: 0) {
             Spacer()
-            VStack(spacing: 0) {
-                ZStack {
-                    Circle()
-                        .fill(Color.sweepyGreen)
-                        .frame(width: 40, height: 40)
-                        .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
-                    Image(systemName: "car.fill")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.white)
-                }
-                Rectangle()
+            ZStack {
+                Circle()
+                    .fill(Color.sweepyGreen.opacity(0.2))
+                    .frame(width: 56, height: 56)
+                Circle()
                     .fill(Color.sweepyGreen)
-                    .frame(width: 2, height: 6)
+                    .frame(width: 40, height: 40)
+                    .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
+                Image(systemName: "car.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
             }
             Spacer()
             Color.clear.frame(height: panelCollapsedHeight)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
     }
 
     // MARK: - Bottom Panel Overlay (replaces persistent sheet)
@@ -320,41 +305,13 @@ struct MainMapView: View {
                         locationManager: locationManager,
                         cleaningDataManager: cleaningDataManager,
                         onHelpTap: { showWelcome = true },
-                        onSegmentsLoaded: { segs in blockSegments = segs },
                         onSaveWithSide: { side, entries, street in
                             resolvedStreet = street
-                            scoutInitialSide = side
-                            let segments = blockSegments
-                            Task { @MainActor in
-                                let snapped = street.snappedCoordinate
-                                let userLoc = CLLocation(latitude: snapped.latitude, longitude: snapped.longitude)
-                                let nearestSeg = segments.min {
-                                    userLoc.distance(from: CLLocation(latitude: $0.centroid.latitude, longitude: $0.centroid.longitude))
-                                    < userLoc.distance(from: CLLocation(latitude: $1.centroid.latitude, longitude: $1.centroid.longitude))
-                                }
-                                if let seg = nearestSeg {
-                                    bestBlock = (from: seg.fromStreet, to: seg.toStreet)
-                                    let blockFiltered = entries.filter { e in
-                                        (BlockMatcher.fuzzyMatch(e.fromStreet, seg.fromStreet) && BlockMatcher.fuzzyMatch(e.toStreet, seg.toStreet)) ||
-                                        (BlockMatcher.fuzzyMatch(e.fromStreet, seg.toStreet)   && BlockMatcher.fuzzyMatch(e.toStreet, seg.fromStreet))
-                                    }
-                                    streetEntries = CleaningDataManager.closestSignDedup(
-                                        blockFiltered.isEmpty ? entries : blockFiltered,
-                                        coordinate: snapped
-                                    )
-                                } else {
-                                    let best = await BlockMatcher.findBestBlock(
-                                        entries: entries,
-                                        streetName: street.normalizedName,
-                                        borough: street.borough,
-                                        userCoordinate: activeCoordinate
-                                    )
-                                    bestBlock = best
-                                    streetEntries = entries
-                                }
-                                withAnimation { locationManager.scoutModeActive = false }
-                                activeModal = .savePicker
-                            }
+                            streetEntries = entries
+                            bestBlock = nil
+                            withAnimation { locationManager.scoutModeActive = false }
+                            let coord = activeCoordinate
+                            createSpot(street: street, side: side, confirmedEntries: entries, userCoordinate: coord)
                         }
                     )
                 } else {
@@ -418,9 +375,10 @@ struct MainMapView: View {
                     streetOrientation: street.orientation,
                     onConfirm: { side, confirmedEntries in
                         scoutInitialSide = nil
+                        let savedCoord = activeCoordinate
                         activeModal = nil
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            createSpot(street: street, side: side, confirmedEntries: confirmedEntries)
+                            createSpot(street: street, side: side, confirmedEntries: confirmedEntries, userCoordinate: savedCoord)
                         }
                     },
                     initialSide: scoutInitialSide,
@@ -433,7 +391,8 @@ struct MainMapView: View {
                         )
                         streetEntries = fresh
                         return fresh
-                    }
+                    },
+                    precomputedBearing: streetBearing
                 )
                 .presentationDetents([.large])
             }
@@ -456,9 +415,7 @@ struct MainMapView: View {
                     },
                     onDone: {
                         activeModal = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            activeModal = .parkedSummary
-                        }
+                        pendingSpot = nil
                     },
                     onCancel: {
                         activeModal = nil
@@ -569,11 +526,6 @@ struct MainMapView: View {
             let cam = MapCameraPosition.camera(MapCamera(centerCoordinate: coord, distance: 400))
             withAnimation { cameraPosition = cam }
         }
-        // Load coloured block segments in the background so the map shows schedule info immediately.
-        // Debounced inside loadBackgroundSegments — only re-fetches after moving > 100 m.
-        if savedSpot == nil {
-            Task { @MainActor in await loadBackgroundSegments(from: locationManager.coordinate) }
-        }
     }
 
     private func handleScoutModeActiveChange(_: Bool, _ active: Bool) {
@@ -618,18 +570,65 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
                     < userLoc.distance(from: CLLocation(latitude: $1.centroid.latitude, longitude: $1.centroid.longitude))
                 }
 
-                let blockFiltered: [StreetCleaningEntry]
+                // Compute street bearing from the nearest segment's endpoints while we have
+                // the full pool — SidePickerView only receives deduped entries which are
+                // too sparse to compute a reliable bearing from.
+                if let seg = nearestSeg {
+                    let φ1 = seg.fromCoord.latitude  * .pi / 180
+                    let φ2 = seg.toCoord.latitude    * .pi / 180
+                    let Δλ = (seg.toCoord.longitude - seg.fromCoord.longitude) * .pi / 180
+                    let y  = sin(Δλ) * cos(φ2)
+                    let x  = cos(φ1) * sin(φ2) - sin(φ1) * cos(φ2) * cos(Δλ)
+                    streetBearing = (atan2(y, x) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+                } else {
+                    streetBearing = nil
+                }
+
+                var blockFiltered: [StreetCleaningEntry]
                 let blockFrom: String
                 let blockTo: String
 
                 if let seg = nearestSeg {
-                    // Filter pool to entries on this specific block face (includes null-coord entries)
-                    blockFiltered = pool.filter { e in
-                        (BlockMatcher.fuzzyMatch(e.fromStreet, seg.fromStreet) && BlockMatcher.fuzzyMatch(e.toStreet, seg.toStreet)) ||
-                        (BlockMatcher.fuzzyMatch(e.fromStreet, seg.toStreet)   && BlockMatcher.fuzzyMatch(e.toStreet, seg.fromStreet))
-                    }
                     blockFrom = seg.fromStreet
                     blockTo   = seg.toStreet
+                    // Per-side block filtering: each side uses its own nearest segment so that
+                    // null-coord entries (which may have different from/to than the opposite side)
+                    // are not excluded. Null-coord entries are always included unconditionally
+                    // since they cannot be filtered spatially.
+                    let relevantSides: [SideDetector.StreetSide] = street.orientation == .eastWest
+                        ? [.north, .south] : [.east, .west]
+                    blockFiltered = []
+                    for side in relevantSides {
+                        let sideSegs = segments.filter { $0.side == side }
+                        if let nearest = sideSegs.min(by: {
+                            userLoc.distance(from: CLLocation(latitude: $0.centroid.latitude, longitude: $0.centroid.longitude))
+                            < userLoc.distance(from: CLLocation(latitude: $1.centroid.latitude, longitude: $1.centroid.longitude))
+                        }) {
+                            // Apply from/to block match to all entries (geocoded AND null-coord).
+                            // The old null-coord bypass let entries from distant blocks on the same
+                            // street pass through, causing wrong schedules to be selected.
+                            let matched = pool.filter { e in
+                                guard e.normalizedSide == side else { return false }
+                                return (BlockMatcher.fuzzyMatch(e.fromStreet, nearest.fromStreet) && BlockMatcher.fuzzyMatch(e.toStreet, nearest.toStreet)) ||
+                                       (BlockMatcher.fuzzyMatch(e.fromStreet, nearest.toStreet)   && BlockMatcher.fuzzyMatch(e.toStreet, nearest.fromStreet))
+                            }
+                            if matched.isEmpty {
+                                // Fuzzy match failed (name variation). Fall back to null-coord
+                                // entries only — geocoded entries outside the match are wrong block.
+                                blockFiltered += pool.filter { $0.normalizedSide == side && $0.signXCoord == nil && $0.signYCoord == nil }
+                            } else {
+                                blockFiltered += matched
+                            }
+                        } else {
+                            blockFiltered += pool.filter { $0.normalizedSide == side }
+                        }
+                    }
+                    // Safety net: if block matching produced no entries for a primary side
+                    // (e.g. due to name-variation fuzzy-match failure), fall back to all
+                    // proximity-filtered entries for that side so the schedule isn't blank.
+                    for side in relevantSides where !blockFiltered.contains(where: { $0.normalizedSide == side }) {
+                        blockFiltered += pool.filter { $0.normalizedSide == side }
+                    }
                 } else {
                     // No geocoded signs — fall back to geocoding-based block matching
                     let best = await BlockMatcher.findBestBlock(
@@ -654,7 +653,6 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
                 resolvedStreet = street
                 bestBlock = blockFrom.isEmpty ? nil : (from: blockFrom, to: blockTo)
                 streetEntries = deduped
-                blockSegments = segments
             } catch {
                 resolvedStreet = BlockMatcher.ResolvedStreet(
                     name: "Current Location",
@@ -677,7 +675,8 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
     private func createSpot(
         street: BlockMatcher.ResolvedStreet,
         side: SideDetector.StreetSide,
-        confirmedEntries: [StreetCleaningEntry]? = nil
+        confirmedEntries: [StreetCleaningEntry]? = nil,
+        userCoordinate: CLLocationCoordinate2D? = nil
     ) {
         // Entries are already deduped to one per (side, weekday) by triggerSaveFlow.
         let pool = confirmedEntries ?? streetEntries
@@ -698,7 +697,7 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
         let crossTo   = bestBlock.map { titleCase($0.to)   } ?? street.crossStreetTo
 
         let spot = ParkingSpot(
-            coordinate: street.snappedCoordinate,
+            coordinate: userCoordinate ?? street.snappedCoordinate,
             streetName: street.name,
             crossStreetFrom: crossFrom,
             crossStreetTo: crossTo,
@@ -723,78 +722,6 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
     }
 
 
-
-    /// Loads block-face segments for `coordinate` and a 3×3 grid of nearby sample points,
-    /// then merges the results into `blockSegments`.
-    ///
-    /// Deduplication is cell-based: the map is divided into ~330 m cells and each cell is
-    /// fetched at most once per session.  Calling this on every map-camera-change is safe —
-    /// cells already loaded return immediately without any network work.
-    private func loadBackgroundSegments(from coordinate: CLLocationCoordinate2D) async {
-        // Skip entirely if the origin is outside NYC.
-        guard CleaningDataManager.borough(for: coordinate) != "" else { return }
-
-        // ~330 m cell — larger than a NYC block so nearby pans reuse the same cell.
-        let cellSize = 0.003
-        func cellKey(_ c: CLLocationCoordinate2D) -> String {
-            "\(Int(c.latitude  / cellSize))|\(Int(c.longitude / cellSize))"
-        }
-
-        let key = cellKey(coordinate)
-        guard !loadedSegmentCells.contains(key) else { return }
-        loadedSegmentCells.insert(key)
-
-        // 3×3 grid at 250 m spacing — covers ≈ 500 m in every direction from the origin.
-        // Each point typically resolves to a different street (parallel or perpendicular),
-        // so 9 simultaneous geocoding + schedule calls populate a meaningful chunk of the map.
-        let step   = 250.0
-        let latOff = step / 111_139.0
-        let lonOff = step / (111_139.0 * cos(coordinate.latitude * .pi / 180))
-        let offsets: [(Double, Double)] = [
-            (-latOff, -lonOff), (-latOff, 0), (-latOff,  lonOff),
-            (      0, -lonOff), (      0, 0), (      0,  lonOff),
-            ( latOff, -lonOff), ( latOff, 0), ( latOff,  lonOff),
-        ]
-
-        var collected: [BlockSegment] = []
-        await withTaskGroup(of: [BlockSegment].self) { group in
-            for (dlat, dlon) in offsets {
-                let sample = CLLocationCoordinate2D(
-                    latitude:  coordinate.latitude  + dlat,
-                    longitude: coordinate.longitude + dlon
-                )
-                // Skip sample points that fall outside NYC borough bounds.
-                guard CleaningDataManager.borough(for: sample) != "" else { continue }
-                group.addTask { [mgr = cleaningDataManager] in
-                    guard let street = try? await BlockMatcher.resolve(coordinate: sample) else { return [] }
-                    // Double-check: resolved borough must be a real NYC borough.
-                    guard !street.borough.isEmpty else { return [] }
-                    let entries = await mgr.loadSchedule(
-                        streetName: street.normalizedName,
-                        borough: street.borough,
-                        coordinate: street.snappedCoordinate
-                    )
-                    let nearby = CleaningDataManager.proximityFiltered(entries, coordinate: street.snappedCoordinate)
-                    let pool = nearby.isEmpty ? entries : nearby
-                    let segments = CleaningDataManager.buildSegments(pool, snappedCoordinate: street.snappedCoordinate)
-                    // Drop segments whose centroid is more than 400 m from the fetch point —
-                    // eliminates stray lines from distant blocks on long streets.
-                    let anchor = CLLocation(latitude: street.snappedCoordinate.latitude,
-                                           longitude: street.snappedCoordinate.longitude)
-                    return segments.filter {
-                        CLLocation(latitude: $0.centroid.latitude, longitude: $0.centroid.longitude)
-                            .distance(from: anchor) < 400
-                    }
-                }
-            }
-            for await segs in group { collected.append(contentsOf: segs) }
-        }
-
-        var seen = Set<String>(blockSegments.map { $0.id })
-        let newSegs = collected.filter { seen.insert($0.id).inserted }
-        guard !newSegs.isEmpty else { return }
-        blockSegments.append(contentsOf: newSegs)
-    }
 
     private func syncWidgetData() {
         syncWidgetData(with: spots.first)
@@ -836,8 +763,10 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
         spot.isActive = false
         try? modelContext.save()
         overrideCoordinate = nil
-        blockSegments = []
-        loadedSegmentCells = []   // force reload when map reappears
+        cameraPosition = .userLocation(fallback: .camera(MapCamera(
+            centerCoordinate: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
+            distance: 50_000
+        )))
     }
 
     private func navigateToCar(_ spot: ParkingSpot) {
@@ -915,7 +844,7 @@ struct NoSpotPanel: View {
             )
         }
         .padding(.horizontal, 20)
-        .padding(.top, 8)
+        .padding(.top, 28)
     }
 }
 

@@ -6,7 +6,6 @@ struct ScoutBottomPanel: View {
     var locationManager: LocationManager
     var cleaningDataManager: CleaningDataManager
     var onHelpTap: (() -> Void)? = nil
-    var onSegmentsLoaded: (([BlockSegment]) -> Void)? = nil
     let onSaveWithSide: (SideDetector.StreetSide, [StreetCleaningEntry], BlockMatcher.ResolvedStreet) -> Void
 
     @State private var resolvedStreet: BlockMatcher.ResolvedStreet?
@@ -15,6 +14,7 @@ struct ScoutBottomPanel: View {
     @State private var currentSegments: [BlockSegment] = []
     @State private var isResolving = false
     @State private var lastResolvedCoordinate: CLLocationCoordinate2D? = nil
+    @State private var selectedSide: SideDetector.StreetSide? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -115,14 +115,27 @@ struct ScoutBottomPanel: View {
                             relativeLabel: index == 0 ? "Left" : "Right",
                             entries: displayEntries,
                             isRecommended: side == recommendedSide,
+                            isSelected: side == selectedSide,
                             action: {
-                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                onSaveWithSide(side, allEntries, street)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(duration: 0.25)) { selectedSide = side }
                             }
                         )
                     }
                 }
                 .animation(.spring(duration: 0.35), value: sides)
+
+                if let sel = selectedSide {
+                    SweepyButton(
+                        title: ctaTitle(for: sel, entries: displayEntries),
+                        icon: "location.fill",
+                        action: {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            onSaveWithSide(sel, nearbyEntries, street)
+                        }
+                    )
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
 
                 aspUpdatesSection
 
@@ -139,6 +152,7 @@ struct ScoutBottomPanel: View {
         .padding(.bottom, 16)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .task { await resolve() }
+        .onChange(of: resolvedStreet?.name) { _, _ in selectedSide = nil }
         .onChange(of: locationManager.coordinate.latitude) { _, _ in
             let coord = locationManager.coordinate
             if let last = lastResolvedCoordinate {
@@ -214,6 +228,7 @@ struct ScoutBottomPanel: View {
         relativeLabel: String,
         entries: [StreetCleaningEntry],
         isRecommended: Bool,
+        isSelected: Bool,
         action: @escaping () -> Void
     ) -> some View {
         let sideEntries = entries.filter { $0.normalizedSide == side }
@@ -233,7 +248,7 @@ struct ScoutBottomPanel: View {
                     Text(relativeLabel)
                         .font(.system(size: 28, weight: .black))
                         .tracking(-1)
-                        .foregroundStyle(isRecommended ? accentColor : Color.sweepyWhite)
+                        .foregroundStyle((isSelected || isRecommended) ? accentColor : Color.sweepyWhite)
                     Spacer()
                     if isRecommended {
                         Text("BEST")
@@ -246,33 +261,32 @@ struct ScoutBottomPanel: View {
                             .clipShape(Capsule())
                     }
                 }
-                let rel = side.relativeLabel(facing: locationManager.heading)
-                Text(rel.map { "\($0) side (\(side.displayName))" } ?? "\(side.displayName) side")
+                Text(side.displayName + " side")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Color.sweepyWhite)
                 if let entry = nextEntry {
-                    Text(entry.timeWindowDisplay)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color.sweepyGray2)
                     Text(entry.weekDay)
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.sweepyGray3)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.sweepyWhite)
+                    Text(entry.timeWindowDisplay)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sweepyGray2)
                 } else {
                     Text("No schedule")
-                        .font(.system(size: 10))
+                        .font(.system(size: 12))
                         .foregroundStyle(Color.sweepyGray3)
                 }
             }
             .padding(.vertical, 20)
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isRecommended ? Color.sweepyGreen.opacity(0.06) : Color.sweepySurface2)
+            .background(isSelected ? (isSoon ? Color.sweepyAmber.opacity(0.1) : Color.sweepyGreen.opacity(0.1)) : (isRecommended ? Color.sweepyGreen.opacity(0.06) : Color.sweepySurface2))
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
                     .strokeBorder(
-                        isSoon ? Color.sweepyAmber.opacity(0.4) : (isRecommended ? Color.sweepyGreen.opacity(0.4) : Color.sweepyBorder),
-                        lineWidth: isRecommended ? 1.5 : 1
+                        isSoon ? Color.sweepyAmber.opacity(isSelected ? 0.7 : 0.4) : ((isSelected || isRecommended) ? Color.sweepyGreen.opacity(isSelected ? 0.7 : 0.4) : Color.sweepyBorder),
+                        lineWidth: (isSelected || isRecommended) ? 1.5 : 1
                     )
             )
         }
@@ -287,6 +301,16 @@ struct ScoutBottomPanel: View {
               let right = sides.first(where: { $0 != left })
         else { return sides }
         return [left, right]
+    }
+
+    private func ctaTitle(for side: SideDetector.StreetSide, entries: [StreetCleaningEntry]) -> String {
+        let sideEntries = entries.filter { $0.normalizedSide == side }
+        if let next = sideEntries.compactMap({ $0.nextCleaningDate() }).min() {
+            let f = DateFormatter()
+            f.dateFormat = "EEE"
+            return "Save spot — move by \(f.string(from: next))"
+        }
+        return "Save this spot"
     }
 
     private func recommendSide(sides: [SideDetector.StreetSide], entries: [StreetCleaningEntry]) -> SideDetector.StreetSide {
@@ -331,10 +355,20 @@ struct ScoutBottomPanel: View {
                     userLoc.distance(from: CLLocation(latitude: $0.centroid.latitude, longitude: $0.centroid.longitude))
                     < userLoc.distance(from: CLLocation(latitude: $1.centroid.latitude, longitude: $1.centroid.longitude))
                 }) {
-                    blockFiltered += pool.filter { e in
+                    // Apply from/to block match to all entries (geocoded AND null-coord).
+                    // The old null-coord bypass let entries from distant blocks on the same
+                    // street pass through, causing wrong schedules to be selected.
+                    let matched = pool.filter { e in
                         guard e.normalizedSide == side else { return false }
                         return (BlockMatcher.fuzzyMatch(e.fromStreet, nearest.fromStreet) && BlockMatcher.fuzzyMatch(e.toStreet, nearest.toStreet))
                             || (BlockMatcher.fuzzyMatch(e.fromStreet, nearest.toStreet)   && BlockMatcher.fuzzyMatch(e.toStreet, nearest.fromStreet))
+                    }
+                    if matched.isEmpty {
+                        // Fuzzy match failed (name variation). Fall back to null-coord
+                        // entries only — geocoded entries outside the match are wrong block.
+                        blockFiltered += pool.filter { $0.normalizedSide == side && $0.signXCoord == nil && $0.signYCoord == nil }
+                    } else {
+                        blockFiltered += matched
                     }
                 } else {
                     blockFiltered += pool.filter { $0.normalizedSide == side }
@@ -352,7 +386,6 @@ struct ScoutBottomPanel: View {
                                                    longitude: $0.centroid.longitude)) < 400
             }
             currentSegments = filteredSegments
-            onSegmentsLoaded?(filteredSegments)
             lastResolvedCoordinate = coord
             prefetchNearby(from: street.snappedCoordinate)
         } catch {}

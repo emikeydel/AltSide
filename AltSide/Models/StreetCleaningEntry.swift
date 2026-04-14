@@ -72,7 +72,7 @@ struct StreetCleaningEntry: Codable, Identifiable {
     func nextCleaningDate(from date: Date = Date()) -> Date? {
         guard let targetWeekday = weekdayInt else { return nil }
         let cal = Calendar.current
-        for daysAhead in 0...6 {
+        for daysAhead in 0...7 {
             guard let candidate = cal.date(byAdding: .day, value: daysAhead, to: date) else { continue }
             guard cal.component(.weekday, from: candidate) == targetWeekday else { continue }
 

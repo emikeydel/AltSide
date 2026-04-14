@@ -102,6 +102,7 @@ final class CleaningDataManager {
         do {
             var request = URLRequest(url: url)
             request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue(Secrets.nycOpenDataAppToken, forHTTPHeaderField: "X-App-Token")
             request.timeoutInterval = 20
 
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -195,7 +196,13 @@ final class CleaningDataManager {
         for entry in entries {
             guard let side = entry.normalizedSide else { continue }
             let faceKey  = "\(entry.fromStreet)|\(entry.toStreet)|\(side)"
-            let blockKey = "\(entry.fromStreet)|\(entry.toStreet)"
+            // Canonical block key: normalize then sort from/to so the same physical block
+            // always maps to the same key regardless of direction or abbreviation differences
+            // (e.g. "COURT ST" vs "COURT STREET", or from/to listed in different order).
+            let blockKey = ([entry.fromStreet, entry.toStreet] as [String])
+                .map { BlockMatcher.normalize($0) }
+                .sorted()
+                .joined(separator: "|")
             if groups[faceKey] == nil {
                 groups[faceKey] = FaceAcc(from: entry.fromStreet, to: entry.toStreet, side: side)
             }
@@ -216,40 +223,87 @@ final class CleaningDataManager {
         return groups.compactMap { (key, face) -> BlockSegment? in
             let isEastWest = face.side == .north || face.side == .south
 
-            if !face.coords.isEmpty {
-                // ── Real sign coords ────────────────────────────────────────
-                // Use them as-is so diagonal streets stay at the correct angle.
+            // Helper: extend a single anchor coord into a ±60 m stub in the street's orientation.
+            func stub(around c: CLLocationCoordinate2D) -> (CLLocationCoordinate2D, CLLocationCoordinate2D) {
+                let half = 60.0
+                let halfLat = half / 111_139.0
+                let halfLon = half / (111_139.0 * cos(c.latitude * .pi / 180))
+                if isEastWest {
+                    return (CLLocationCoordinate2D(latitude: c.latitude, longitude: c.longitude - halfLon),
+                            CLLocationCoordinate2D(latitude: c.latitude, longitude: c.longitude + halfLon))
+                } else {
+                    return (CLLocationCoordinate2D(latitude: c.latitude - halfLat, longitude: c.longitude),
+                            CLLocationCoordinate2D(latitude: c.latitude + halfLat, longitude: c.longitude))
+                }
+            }
+
+            let from: CLLocationCoordinate2D
+            let to:   CLLocationCoordinate2D
+
+            if face.coords.count >= 2 {
+                // ── 2+ real sign coords: use as-is (preserves diagonal street angle) ──
                 let sorted = isEastWest
                     ? face.coords.sorted { $0.longitude < $1.longitude }
                     : face.coords.sorted { $0.latitude  < $1.latitude  }
-                let from = sorted.first!
-                let to   = sorted.last!
-                let centroid = CLLocationCoordinate2D(
-                    latitude:  (from.latitude  + to.latitude)  / 2,
-                    longitude: (from.longitude + to.longitude) / 2
-                )
-                return BlockSegment(id: key, fromCoord: from, toCoord: to, centroid: centroid,
-                                    side: face.side, fromStreet: face.from, toStreet: face.to,
-                                    entries: face.entries)
+                from = sorted.first!
+                to   = sorted.last!
+
+            } else if face.coords.count == 1 {
+                // ── 1 real coord: extend to a stub centred on the sign ──────────────
+                (from, to) = stub(around: face.coords[0])
+
+            } else {
+                // ── No coords: synthesise from opposite side via kerbOffset ──────────
+                let blockKey  = ([face.from, face.to] as [String])
+                    .map { BlockMatcher.normalize($0) }
+                    .sorted()
+                    .joined(separator: "|")
+                let allCoords = blockCoords[blockKey] ?? []
+
+                guard !allCoords.isEmpty else { return nil }
+
+                // Build the baseline aligned to the street axis.
+                // Normalise the perpendicular axis to the mean so mixed N+S curb coords
+                // don't produce a diagonal baseline (e.g. westmost from N curb, eastmost
+                // from S curb would slant the segment for an E-W street).
+                let p1: CLLocationCoordinate2D
+                let p2: CLLocationCoordinate2D
+                if allCoords.count >= 2 {
+                    if isEastWest {
+                        let meanLat = allCoords.map { $0.latitude }.reduce(0.0, +) / Double(allCoords.count)
+                        let byLon   = allCoords.sorted { $0.longitude < $1.longitude }
+                        p1 = CLLocationCoordinate2D(latitude: meanLat, longitude: byLon.first!.longitude)
+                        p2 = CLLocationCoordinate2D(latitude: meanLat, longitude: byLon.last!.longitude)
+                    } else {
+                        let meanLon = allCoords.map { $0.longitude }.reduce(0.0, +) / Double(allCoords.count)
+                        let byLat   = allCoords.sorted { $0.latitude < $1.latitude }
+                        p1 = CLLocationCoordinate2D(latitude: byLat.first!.latitude,  longitude: meanLon)
+                        p2 = CLLocationCoordinate2D(latitude: byLat.last!.latitude,   longitude: meanLon)
+                    }
+                } else {
+                    (p1, p2) = stub(around: allCoords[0])
+                }
+
+                // Adaptive offset: when blockCoords has coords from both curbs the
+                // perpendicular spread ≈ street width and the mean sits near the
+                // centreline, so half the spread lands at the correct curb.
+                // When only one side contributed the mean is at that curb; use a
+                // fixed 15 m to cross to approximately the opposite side.
+                let perpRange: Double = {
+                    if isEastWest {
+                        let lats = allCoords.map { $0.latitude }
+                        return (lats.max()! - lats.min()!) * 111_139.0
+                    } else {
+                        let cosLat = cos((allCoords.map { $0.latitude }.reduce(0.0, +) / Double(allCoords.count)) * .pi / 180)
+                        let lons   = allCoords.map { $0.longitude }
+                        return (lons.max()! - lons.min()!) * 111_139.0 * cosLat
+                    }
+                }()
+                let offsetMeters = perpRange > 5.0 ? (perpRange / 2.0) : 15.0
+
+                (from, to) = kerbOffset(p1: p1, p2: p2, side: face.side, meters: offsetMeters)
             }
 
-            // ── Null-coord face: synthesise ─────────────────────────────────
-            let blockKey  = "\(face.from)|\(face.to)"
-            let allCoords = blockCoords[blockKey] ?? []
-
-            // Need at least 2 real coords from the opposite side to derive street direction.
-            // Without them we can't place the line accurately, so skip rather than draw a stub.
-            guard allCoords.count >= 2 else { return nil }
-
-            // Derive endpoints from the opposite side's coords (preserves street angle).
-            let sorted = isEastWest
-                ? allCoords.sorted { $0.longitude < $1.longitude }
-                : allCoords.sorted { $0.latitude  < $1.latitude  }
-            let p1 = sorted.first!
-            let p2 = sorted.last!
-
-            // Shift p1/p2 perpendicular to the segment toward this side (~8 m kerb offset).
-            let (from, to) = kerbOffset(p1: p1, p2: p2, side: face.side, meters: 8.0)
             let centroid = CLLocationCoordinate2D(
                 latitude:  (from.latitude  + to.latitude)  / 2,
                 longitude: (from.longitude + to.longitude) / 2
