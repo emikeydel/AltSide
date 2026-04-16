@@ -7,7 +7,7 @@ struct SavedSpotView: View {
     let spot: ParkingSpot
     let onClear: () -> Void
     let onNavigate: () -> Void
-    var notificationManager: NotificationManager? = nil
+    @Environment(\.notificationManager) private var notificationManager
 
     @State private var showShare = false
     @State private var showParkAgainConfirm = false
@@ -69,9 +69,7 @@ struct SavedSpotView: View {
             ReminderSetupView(
                 spot: spot,
                 onSave: {
-                    if let nm = notificationManager {
-                        Task { @MainActor in await nm.scheduleAlerts(for: spot) }
-                    }
+                    Task { @MainActor in await notificationManager.scheduleAlerts(for: spot) }
                     showEditReminders = false
                 },
                 onSkip: { showEditReminders = false },

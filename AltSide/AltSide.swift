@@ -21,14 +21,13 @@ struct AltSideApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
-                MainMapView(
-                    locationManager: locationManager,
-                    motionManager: motionManager,
-                    bluetoothManager: bluetoothManager,
-                    cleaningDataManager: cleaningData,
-                    notificationManager: notificationManager,
-                    liveActivityManager: liveActivityManager
-                )
+                MainMapView()
+                    .environment(\.locationManager, locationManager)
+                    .environment(\.motionManager, motionManager)
+                    .environment(\.bluetoothManager, bluetoothManager)
+                    .environment(\.cleaningDataManager, cleaningData)
+                    .environment(\.notificationManager, notificationManager)
+                    .environment(\.liveActivityManager, liveActivityManager)
 
                 if showSplash {
                     SplashScreenView()

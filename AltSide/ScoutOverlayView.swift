@@ -3,8 +3,8 @@ import MapKit
 
 /// Scout mode bottom panel — shows side-by-side comparison for the nearest street.
 struct ScoutBottomPanel: View {
-    var locationManager: LocationManager
-    var cleaningDataManager: CleaningDataManager
+    @Environment(\.locationManager) private var locationManager
+    @Environment(\.cleaningDataManager) private var cleaningDataManager
     var onHelpTap: (() -> Void)? = nil
     let onSaveWithSide: (SideDetector.StreetSide, [StreetCleaningEntry], BlockMatcher.ResolvedStreet) -> Void
 
@@ -99,8 +99,16 @@ struct ScoutBottomPanel: View {
                         .foregroundStyle(Color.sweepyWhite)
                 }
 
-                // Side comparison — tap a card to save on that side
-                let rawSides: [SideDetector.StreetSide] = street.orientation == .eastWest ? [.north, .south] : [.east, .west]
+                // Side comparison — tap a card to save on that side.
+                // Derive sides from the data: if entries use E/W, the street runs N-S;
+                // if entries use N/S, it runs E-W. Avoids misclassifying named streets
+                // like "CLINTON STREET" which contain "STREET" but run north-south.
+                let rawSides: [SideDetector.StreetSide] = {
+                    let hasSides = Set(nearbyEntries.compactMap { $0.normalizedSide })
+                    if hasSides.contains(.east) || hasSides.contains(.west) { return [.east, .west] }
+                    if hasSides.contains(.north) || hasSides.contains(.south) { return [.north, .south] }
+                    return street.orientation == .eastWest ? [.north, .south] : [.east, .west]
+                }()
                 let sides = orderedSides(from: rawSides)
                 let displayEntries = nearbyEntries
                 let recommendedSide = recommendSide(sides: sides, entries: displayEntries)
@@ -343,38 +351,35 @@ struct ScoutBottomPanel: View {
             let segments = CleaningDataManager.buildSegments(pool, snappedCoordinate: street.snappedCoordinate)
             let userLoc = CLLocation(latitude: street.snappedCoordinate.latitude, longitude: street.snappedCoordinate.longitude)
 
-            // Per-side block-face filtering: for each side, find its nearest segment and keep
-            // only entries on that specific block. Entries from adjacent blocks with unique
-            // weekdays would otherwise survive closestSignDedup and show wrong schedules.
-            let relevantSides: [SideDetector.StreetSide] = street.orientation == .eastWest
-                ? [.north, .south] : [.east, .west]
+            // Per-side block-face filtering: try ALL nearby segments for each side and
+            // collect entries from any that fuzzy-match. closestSignDedup (below) then
+            // picks the entry with the closest sign coordinate per (side, weekday),
+            // ensuring the correct block wins when the user is near a block boundary.
+            // Orientation is derived from sign data — more reliable than street name inference.
+            let nsCount = pool.filter { $0.normalizedSide == .east || $0.normalizedSide == .west }.count
+            let ewCount = pool.filter { $0.normalizedSide == .north || $0.normalizedSide == .south }.count
+            let relevantSides: [SideDetector.StreetSide] = nsCount > ewCount ? [.east, .west] : [.north, .south]
             var blockFiltered: [StreetCleaningEntry] = []
             for side in relevantSides {
                 let sideSegs = segments.filter { $0.side == side }
-                if let nearest = sideSegs.min(by: {
-                    userLoc.distance(from: CLLocation(latitude: $0.centroid.latitude, longitude: $0.centroid.longitude))
-                    < userLoc.distance(from: CLLocation(latitude: $1.centroid.latitude, longitude: $1.centroid.longitude))
-                }) {
-                    // Apply from/to block match to all entries (geocoded AND null-coord).
-                    // The old null-coord bypass let entries from distant blocks on the same
-                    // street pass through, causing wrong schedules to be selected.
-                    let matched = pool.filter { e in
-                        guard e.normalizedSide == side else { return false }
-                        return (BlockMatcher.fuzzyMatch(e.fromStreet, nearest.fromStreet) && BlockMatcher.fuzzyMatch(e.toStreet, nearest.toStreet))
-                            || (BlockMatcher.fuzzyMatch(e.fromStreet, nearest.toStreet)   && BlockMatcher.fuzzyMatch(e.toStreet, nearest.fromStreet))
+                if sideSegs.isEmpty {
+                    blockFiltered += pool.filter { $0.normalizedSide == side }
+                } else {
+                    var matched: [StreetCleaningEntry] = []
+                    for seg in sideSegs {
+                        matched += pool.filter { e in
+                            guard e.normalizedSide == side else { return false }
+                            return (BlockMatcher.fuzzyMatch(e.fromStreet, seg.fromStreet) && BlockMatcher.fuzzyMatch(e.toStreet, seg.toStreet))
+                                || (BlockMatcher.fuzzyMatch(e.fromStreet, seg.toStreet)   && BlockMatcher.fuzzyMatch(e.toStreet, seg.fromStreet))
+                        }
                     }
                     if matched.isEmpty {
-                        // Fuzzy match failed (name variation). Fall back to null-coord
-                        // entries only — geocoded entries outside the match are wrong block.
                         blockFiltered += pool.filter { $0.normalizedSide == side && $0.signXCoord == nil && $0.signYCoord == nil }
                     } else {
                         blockFiltered += matched
                     }
-                } else {
-                    blockFiltered += pool.filter { $0.normalizedSide == side }
                 }
             }
-
             nearbyEntries = CleaningDataManager.closestSignDedup(
                 blockFiltered.isEmpty ? pool : blockFiltered,
                 coordinate: street.snappedCoordinate

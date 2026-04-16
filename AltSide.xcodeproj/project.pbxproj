@@ -40,6 +40,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A6213ADF2F8FEC49008B3812 /* Sweepy.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = Sweepy.storekit; path = AltSide/Sweepy.storekit; sourceTree = "<group>"; };
 		A62177812F86F3ED00E6D75A /* AltSideWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AltSideWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A62177832F86F3ED00E6D75A /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		A62177852F86F3ED00E6D75A /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
@@ -54,15 +55,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-			);
-			target = A62177802F86F3ED00E6D75A /* AltSideWidgetExtension */;
-		};
-		A621779E2F86F47700E6D75A /* Exceptions for "AltSide" folder in "AltSideWidgetExtension" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Models/ParkingActivityAttributes.swift,
-				Models/ParkingWidgetData.swift,
-				Utilities/ASPSuspensionCalendar.swift,
 			);
 			target = A62177802F86F3ED00E6D75A /* AltSideWidgetExtension */;
 		};
@@ -88,7 +80,6 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				A6F1CA032F9B6B4100A7C505 /* Exceptions for "AltSide" folder in "AltSide" target */,
-				A621779E2F86F47700E6D75A /* Exceptions for "AltSide" folder in "AltSideWidgetExtension" target */,
 			);
 			path = AltSide;
 			sourceTree = "<group>";
@@ -132,6 +123,7 @@
 		A6625A972F7AC23C0027C505 = {
 			isa = PBXGroup;
 			children = (
+				A6213ADF2F8FEC49008B3812 /* Sweepy.storekit */,
 				A63BD7BB2F86FB1E00B7AA3A /* AltSideWidgetExtension.entitlements */,
 				A6625AA32F7AC23C0027C505 /* AltSide */,
 				A62177872F86F3ED00E6D75A /* AltSideWidget */,
@@ -299,7 +291,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.laidoffdad.sweepy.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -333,7 +325,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.laidoffdad.sweepy.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -487,7 +479,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.laidoffdad.sweepy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -515,7 +507,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.laidoffdad.sweepy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

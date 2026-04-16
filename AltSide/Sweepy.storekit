@@ -1,0 +1,58 @@
+{
+  "identifier": "sweepy_storekit_config",
+  "nonConsumableProducts": [],
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "0.99",
+      "familySharable": false,
+      "internalID": "00000001-0000-0000-0000-000000000001",
+      "localizations": [
+        {
+          "description": "A small tip to say thanks",
+          "displayName": "Quick Thanks",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "sweepy_tip_1",
+      "referenceName": "Tip $0.99",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "4.99",
+      "familySharable": false,
+      "internalID": "00000001-0000-0000-0000-000000000002",
+      "localizations": [
+        {
+          "description": "A generous tip",
+          "displayName": "You Rock",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "sweepy_tip_5",
+      "referenceName": "Tip $4.99",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "9.99",
+      "familySharable": false,
+      "internalID": "00000001-0000-0000-0000-000000000003",
+      "localizations": [
+        {
+          "description": "Super fan tip — removes future popups",
+          "displayName": "Super Fan",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "sweepy_tip_10",
+      "referenceName": "Tip $9.99",
+      "type": "Consumable"
+    }
+  ],
+  "settings": {},
+  "subscriptionGroups": [],
+  "version": {
+    "major": 3,
+    "minor": 0
+  }
+}

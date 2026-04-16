@@ -27,12 +27,12 @@ struct MainMapView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Query(filter: #Predicate<ParkingSpot> { $0.isActive }) private var spots: [ParkingSpot]
 
-    var locationManager: LocationManager
-    var motionManager: MotionManager
-    var bluetoothManager: BluetoothManager
-    var cleaningDataManager: CleaningDataManager
-    var notificationManager: NotificationManager
-    var liveActivityManager: LiveActivityManager
+    @Environment(\.locationManager) private var locationManager
+    @Environment(\.motionManager) private var motionManager
+    @Environment(\.bluetoothManager) private var bluetoothManager
+    @Environment(\.cleaningDataManager) private var cleaningDataManager
+    @Environment(\.notificationManager) private var notificationManager
+    @Environment(\.liveActivityManager) private var liveActivityManager
 
     @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .camera(MapCamera(
         centerCoordinate: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
@@ -61,6 +61,8 @@ struct MainMapView: View {
     }
 
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
+    @AppStorage("tipPopupSuppressed") private var tipPopupSuppressed = false
+    @State private var showTipPopup = false
 
     private var savedSpot: ParkingSpot? { spots.first }
 
@@ -86,25 +88,26 @@ struct MainMapView: View {
                 SavedSpotView(
                     spot: spot,
                     onClear: { clearSpot(spot) },
-                    onNavigate: { navigateToCar(spot) },
-                    notificationManager: notificationManager
+                    onNavigate: { navigateToCar(spot) }
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             } else {
                 ZStack(alignment: .bottom) {
                     map
 
-                    // Always-on center pin — shows where the spot will be saved
-                    if savedSpot == nil && !locationManager.scoutModeActive {
+                    // Always-on center pin — shows where the spot will be saved.
+                    // Hidden when address-picker pin is active (Annotation plays that role).
+                    if savedSpot == nil && !locationManager.scoutModeActive && overrideCoordinate == nil {
                         centerPinOverlay
                             .zIndex(4)
                             .allowsHitTesting(false)
                     }
 
-                    // Info button — top left (hidden in scout mode, moved to panel header)
+                    // Top buttons — hidden in scout mode
                     if !locationManager.scoutModeActive {
                         VStack {
                             HStack {
+                                // Help button — top left
                                 Button(action: { showWelcome = true }) {
                                     ZStack {
                                         Circle()
@@ -119,6 +122,27 @@ struct MainMapView: View {
                                 .padding(.leading, 16)
                                 .padding(.top, 60)
                                 Spacer()
+                                // Center on user location — top right
+                                Button(action: {
+                                    overrideCoordinate = nil
+                                    pinCoordinate = nil
+                                    let coord = locationManager.coordinate
+                                    withAnimation {
+                                        cameraPosition = .camera(MapCamera(centerCoordinate: coord, distance: 400))
+                                    }
+                                }) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color.sweepySurface2)
+                                            .frame(width: 36, height: 36)
+                                            .shadow(radius: 4)
+                                        Image(systemName: "location.fill")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(Color.sweepyGreen)
+                                    }
+                                }
+                                .padding(.trailing, 16)
+                                .padding(.top, 60)
                             }
                             Spacer()
                         }
@@ -162,15 +186,18 @@ struct MainMapView: View {
         .sheet(item: $activeModal) { modal in
             modalContent(for: modal)
         }
+        .sheet(isPresented: $showTipPopup) {
+            TipPopupView()
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $showAddressPicker) {
             AddressPickerSheet(
                 onLocationSelected: { coordinate in
                     overrideCoordinate = coordinate
+                    pinCoordinate = coordinate
                     let cam = MapCameraPosition.camera(MapCamera(centerCoordinate: coordinate, distance: 400))
-                    cameraPosition = cam
-                    motionManager.startMonitoring()
-                    bluetoothManager.startMonitoring()
-                    triggerSaveFlow()
+                    withAnimation { cameraPosition = cam }
                 },
                 onHelpTap: { showWelcome = true }
             )
@@ -213,14 +240,15 @@ struct MainMapView: View {
             Color.clear.frame(height: panelCollapsedHeight)
         }
         .mapControls {
-            if overrideCoordinate == nil {
-                MapUserLocationButton()
-            }
             MapCompass()
         }
         .onMapCameraChange(frequency: .continuous) { @MainActor context in
             guard savedSpot == nil, !locationManager.scoutModeActive else { return }
             pinCoordinate = context.camera.centerCoordinate
+            // Keep the address annotation tracking the camera so user can fine-tune position
+            if overrideCoordinate != nil {
+                overrideCoordinate = context.camera.centerCoordinate
+            }
         }
         .ignoresSafeArea()
     }
@@ -302,8 +330,6 @@ struct MainMapView: View {
             Group {
                 if locationManager.scoutModeActive {
                     ScoutBottomPanel(
-                        locationManager: locationManager,
-                        cleaningDataManager: cleaningDataManager,
                         onHelpTap: { showWelcome = true },
                         onSaveWithSide: { side, entries, street in
                             resolvedStreet = street
@@ -318,8 +344,6 @@ struct MainMapView: View {
                     NoSpotPanel(
                         isLoading: isResolvingStreet || cleaningDataManager.isLoading,
                         onSaveTap: {
-                            motionManager.startMonitoring()
-                            bluetoothManager.startMonitoring()
                             triggerSaveFlow(at: pinCoordinate)
                         },
                         onScoutTap: {
@@ -371,7 +395,6 @@ struct MainMapView: View {
                     coordinate: activeCoordinate,
                     streetName: street.name,
                     entries: streetEntries,
-                    locationManager: locationManager,
                     streetOrientation: street.orientation,
                     onConfirm: { side, confirmedEntries in
                         scoutInitialSide = nil
@@ -383,6 +406,14 @@ struct MainMapView: View {
                     },
                     initialSide: scoutInitialSide,
                     onHelpTap: { showWelcome = true },
+                    onCancel: {
+                        overrideCoordinate = nil
+                        pinCoordinate = nil
+                        let coord = locationManager.coordinate
+                        withAnimation {
+                            cameraPosition = .camera(MapCamera(centerCoordinate: coord, distance: 400))
+                        }
+                    },
                     onRefresh: {
                         let fresh = await cleaningDataManager.loadSchedule(
                             streetName: street.normalizedName,
@@ -416,6 +447,7 @@ struct MainMapView: View {
                     onDone: {
                         activeModal = nil
                         pendingSpot = nil
+                        showTipIfNeeded()
                     },
                     onCancel: {
                         activeModal = nil
@@ -470,8 +502,8 @@ struct MainMapView: View {
                     onDone: {
                         activeModal = nil
                         pendingSpot = nil
-                    },
-                    notificationManager: notificationManager
+                        showTipIfNeeded()
+                    }
                 )
                 .presentationDetents([.large])
             }
@@ -595,8 +627,12 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
                     // null-coord entries (which may have different from/to than the opposite side)
                     // are not excluded. Null-coord entries are always included unconditionally
                     // since they cannot be filtered spatially.
-                    let relevantSides: [SideDetector.StreetSide] = street.orientation == .eastWest
-                        ? [.north, .south] : [.east, .west]
+                    // Derive orientation from sign data — more reliable than street name
+                    // inference for named streets like "Clinton Street" (runs N-S).
+                    let nsPoolCount = pool.filter { $0.normalizedSide == .east || $0.normalizedSide == .west }.count
+                    let ewPoolCount = pool.filter { $0.normalizedSide == .north || $0.normalizedSide == .south }.count
+                    let relevantSides: [SideDetector.StreetSide] = nsPoolCount > ewPoolCount
+                        ? [.east, .west] : [.north, .south]
                     blockFiltered = []
                     for side in relevantSides {
                         let sideSegs = segments.filter { $0.side == side }
@@ -713,15 +749,27 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
         modelContext.insert(spot)
         syncWidgetData(with: spot)
         liveActivityManager.startIfNeeded(for: spot)
-        // Request notification permission on first save — contextually relevant
+        // Request notification permission on first save — contextually relevant.
         if notificationManager.authorizationStatus == .notDetermined {
             Task { @MainActor in _ = await notificationManager.requestPermission() }
         }
+        // Start motion/Bluetooth monitoring after first save so auto-detect works
+        // for future parking sessions. Deferred to here so the prompts don't appear
+        // before the user has actually saved a spot.
+        motionManager.startMonitoring()
+        bluetoothManager.startMonitoring()
         pendingSpot = spot
         activeModal = .saveConfirm
     }
 
 
+
+    private func showTipIfNeeded() {
+        guard !tipPopupSuppressed else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            showTipPopup = true
+        }
+    }
 
     private func syncWidgetData() {
         syncWidgetData(with: spots.first)
@@ -740,12 +788,7 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
                 scheduleDisplay: {
                     guard let next = spot.nextCleaningDate else { return "" }
                     let dayFmt = DateFormatter(); dayFmt.dateFormat = "EEE"
-                    func t(_ h: Int, _ m: Int) -> String {
-                        let h12 = h == 0 ? 12 : (h > 12 ? h - 12 : h)
-                        let p = h < 12 ? "AM" : "PM"
-                        return m == 0 ? "\(h12) \(p)" : "\(h12):\(String(format: "%02d", m)) \(p)"
-                    }
-                    return "\(dayFmt.string(from: next)) \(t(spot.cleaningStartHour, spot.cleaningStartMinute)) – \(t(spot.cleaningEndHour, spot.cleaningEndMinute))"
+                    return "\(dayFmt.string(from: next)) \(ScheduleFormatter.time(spot.cleaningStartHour, spot.cleaningStartMinute)) – \(ScheduleFormatter.time(spot.cleaningEndHour, spot.cleaningEndMinute))"
                 }(),
                 cleaningDate: spot.nextCleaningDate,
                 isCleaningSoon: spot.isCleaningSoon,
@@ -763,10 +806,18 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
         spot.isActive = false
         try? modelContext.save()
         overrideCoordinate = nil
-        cameraPosition = .userLocation(fallback: .camera(MapCamera(
+        // Reset to NYC level, then zoom to street level — same as initial app launch
+        hasZoomedToUser = false
+        cameraPosition = .camera(MapCamera(
             centerCoordinate: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
             distance: 50_000
-        )))
+        ))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            let coord = locationManager.coordinate
+            let cam = MapCameraPosition.camera(MapCamera(centerCoordinate: coord, distance: 400))
+            withAnimation(.easeInOut(duration: 1.2)) { cameraPosition = cam }
+            hasZoomedToUser = true
+        }
     }
 
     private func navigateToCar(_ spot: ParkingSpot) {

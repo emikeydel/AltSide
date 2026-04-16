@@ -5,12 +5,13 @@ struct SidePickerView: View {
     let coordinate: CLLocationCoordinate2D
     let streetName: String
     let entries: [StreetCleaningEntry]
-    var locationManager: LocationManager
+    @Environment(\.locationManager) private var locationManager
     let streetOrientation: SideDetector.StreetOrientation
     let onConfirm: (SideDetector.StreetSide, [StreetCleaningEntry]) -> Void
 
     var initialSide: SideDetector.StreetSide? = nil
     var onHelpTap: (() -> Void)? = nil
+    var onCancel: (() -> Void)? = nil
     /// Called when user taps refresh; should return fresh entries for this street.
     var onRefresh: (() async -> [StreetCleaningEntry])? = nil
     /// Pre-computed street bearing (degrees from north) passed by the caller when it already
@@ -31,9 +32,13 @@ struct SidePickerView: View {
 
     // MARK: - Side ordering
 
-    /// The two sides relevant to this street (N+S for E-W streets, E+W for avenues).
+    /// The two sides relevant to this street, derived from sign data.
+    /// Falls back to street name inference only when entries have no side information.
     private var primarySides: [SideDetector.StreetSide] {
-        streetOrientation == .eastWest ? [.north, .south] : [.east, .west]
+        let hasSides = Set(displayEntries.compactMap { $0.normalizedSide })
+        if hasSides.contains(.east) || hasSides.contains(.west) { return [.east, .west] }
+        if hasSides.contains(.north) || hasSides.contains(.south) { return [.north, .south] }
+        return streetOrientation == .eastWest ? [.north, .south] : [.east, .west]
     }
 
     /// Always [leftSide, rightSide] so buttons match physical sides of the screen.
@@ -84,7 +89,7 @@ struct SidePickerView: View {
                                         .clipShape(Capsule())
                                 }
                             }
-                            Button(action: { tearDownMap { dismiss() } }) {
+                            Button(action: { tearDownMap { onCancel?(); dismiss() } }) {
                                 Text("Cancel")
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(Color.sweepyGray3)

@@ -56,9 +56,6 @@ final class CarPlayCoordinator {
         CarPlayDataStore.shared.onSaveRightTapped = { [weak self] in
             Task { @MainActor [weak self] in await self?.saveSpot(isLeft: false) }
         }
-        CarPlayDataStore.shared.onParkAgainConfirmed = { [weak self] in
-            self?.clearActiveSpot()
-        }
         CarPlayDataStore.shared.onSetRemindersConfirmed = { [weak self] in
             Task { @MainActor [weak self] in await self?.scheduleReminders() }
         }
@@ -172,12 +169,11 @@ final class CarPlayCoordinator {
                 coordinate: snapped
             )
 
-            let (side1, side2): (SideDetector.StreetSide, SideDetector.StreetSide) = {
-                switch street.orientation {
-                case .eastWest:   return (.north, .south)
-                case .northSouth: return (.east, .west)
-                }
-            }()
+            // Derive orientation from sign data — more reliable than street name inference.
+            let nsCount = allEntries.filter { $0.normalizedSide == .east || $0.normalizedSide == .west }.count
+            let ewCount = allEntries.filter { $0.normalizedSide == .north || $0.normalizedSide == .south }.count
+            let (side1, side2): (SideDetector.StreetSide, SideDetector.StreetSide) = nsCount > ewCount
+                ? (.east, .west) : (.north, .south)
 
             let sched1 = scheduleText(allEntries.filter { $0.normalizedSide == side1 })
             let sched2 = scheduleText(allEntries.filter { $0.normalizedSide == side2 })
@@ -242,25 +238,19 @@ final class CarPlayCoordinator {
         spot.parkingHeading = locationManager.heading
         spot.refreshNextCleaningDate()
 
+        // Clear any existing active spot before saving the new one.
+        let existing = (try? context.fetch(FetchDescriptor<ParkingSpot>(predicate: #Predicate { $0.isActive }))) ?? []
+        for old in existing {
+            Task { await notificationManager.cancelAlerts(for: old.id) }
+            old.isActive = false
+        }
+
         context.insert(spot)
         try? context.save()
 
         trackedSpotID = spot.id
         locationManager.scoutModeActive = false
         showSpotSaved(spot)
-    }
-
-    // MARK: - Clear spot from CarPlay
-
-    private func clearActiveSpot() {
-        let descriptor = FetchDescriptor<ParkingSpot>(predicate: #Predicate { $0.isActive })
-        guard let spot = try? context.fetch(descriptor).first else { return }
-        let spotID = spot.id
-        Task { await notificationManager.cancelAlerts(for: spotID) }
-        spot.isActive = false
-        try? context.save()
-        trackedSpotID = nil
-        CarPlayDataStore.shared.setState(.noSpot, aspSummary: aspSummary())
     }
 
     // MARK: - Schedule reminders from CarPlay
@@ -282,15 +272,9 @@ final class CarPlayCoordinator {
         let relLabel = side.relativeLabel(facing: spot.parkingHeading) ?? side.displayName
         let sideLabel = "\(relLabel) (\(side.displayName) Side)"
 
-        let dayNames = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-        func fmt(_ h: Int, _ m: Int) -> String {
-            let h12 = h == 0 ? 12 : (h > 12 ? h - 12 : h)
-            let p = h < 12 ? "AM" : "PM"
-            return m == 0 ? "\(h12) \(p)" : "\(h12):\(String(format: "%02d", m)) \(p)"
-        }
         let schedule = spot.cleaningDays.compactMap { day -> String? in
             guard day >= 1, day <= 7 else { return nil }
-            return "\(dayNames[day]) \(fmt(spot.cleaningStartHour, spot.cleaningStartMinute)) – \(fmt(spot.cleaningEndHour, spot.cleaningEndMinute))"
+            return "\(ScheduleFormatter.dayNames[day]) \(ScheduleFormatter.time(spot.cleaningStartHour, spot.cleaningStartMinute)) – \(ScheduleFormatter.time(spot.cleaningEndHour, spot.cleaningEndMinute))"
         }.joined(separator: "\n")
 
         let nextCleaning: String
@@ -301,13 +285,22 @@ final class CarPlayCoordinator {
             nextCleaning = ""
         }
 
+        let leftLabel = pendingStreet != nil
+            ? "\(pendingLeftSide.displayName) Side"
+            : "\(side.displayName) Side"
+        let rightLabel = pendingStreet != nil
+            ? "\(pendingRightSide.displayName) Side"
+            : "\(side.opposite.displayName) Side"
+
         CarPlayDataStore.shared.setState(
             .spotSaved(
                 streetName: spot.streetName,
                 sideLabel: sideLabel,
                 schedule: schedule.isEmpty ? "No restrictions" : schedule,
                 nextCleaning: nextCleaning,
-                spotID: spot.id
+                spotID: spot.id,
+                leftLabel: leftLabel,
+                rightLabel: rightLabel
             ),
             aspSummary: aspSummary()
         )

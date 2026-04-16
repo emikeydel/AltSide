@@ -41,12 +41,14 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
                 leftLabel: leftLabel,   leftSchedule: leftSchedule,
                 rightLabel: rightLabel, rightSchedule: rightSchedule
             )
-        case let .spotSaved(streetName, sideLabel, schedule, nextCleaning, _):
+        case let .spotSaved(streetName, sideLabel, schedule, nextCleaning, _, leftLabel, rightLabel):
             return spotSavedTemplate(
                 streetName: streetName,
                 sideLabel: sideLabel,
                 schedule: schedule,
-                nextCleaning: nextCleaning
+                nextCleaning: nextCleaning,
+                leftLabel: leftLabel,
+                rightLabel: rightLabel
             )
         }
     }
@@ -101,7 +103,9 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         streetName: String,
         sideLabel: String,
         schedule: String,
-        nextCleaning: String
+        nextCleaning: String,
+        leftLabel: String,
+        rightLabel: String
     ) -> CPInformationTemplate {
         var items: [CPInformationItem] = [
             CPInformationItem(title: "Parked on", detail: sideLabel),
@@ -114,56 +118,21 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         if !asp.isEmpty {
             items.append(CPInformationItem(title: "ASP Status", detail: asp))
         }
-        let parkAgain = CPTextButton(title: "Park Again", textStyle: .cancel) { [weak self] _ in
-            self?.presentParkAgainAlert()
+        let saveLeft = CPTextButton(title: "Park on \(leftLabel)", textStyle: .confirm) { _ in
+            CarPlayDataStore.shared.onSaveLeftTapped?()
         }
-        let reminders = CPTextButton(title: "Set Reminders", textStyle: .normal) { [weak self] _ in
-            self?.presentRemindersAlert()
-        }
-        let share = CPTextButton(title: "Share", textStyle: .normal) { [weak self] _ in
-            self?.presentShareAlert()
+        let saveRight = CPTextButton(title: "Park on \(rightLabel)", textStyle: .normal) { _ in
+            CarPlayDataStore.shared.onSaveRightTapped?()
         }
         return CPInformationTemplate(
             title: streetName,
             layout: .leading,
             items: items,
-            actions: [parkAgain, reminders, share]
+            actions: [saveLeft, saveRight]
         )
     }
 
     // MARK: - Alert helpers
-
-    private func presentParkAgainAlert() {
-        let confirm = CPAlertAction(title: "Park Again", style: .default) { [weak self] _ in
-            CarPlayDataStore.shared.onParkAgainConfirmed?()
-            self?.interfaceController?.popTemplate(animated: true, completion: nil)
-        }
-        let cancel = CPAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
-            self?.interfaceController?.popTemplate(animated: true, completion: nil)
-        }
-        push(CPAlertTemplate(titleVariants: ["Clear your saved spot?"], actions: [confirm, cancel]))
-    }
-
-    private func presentRemindersAlert() {
-        let set = CPAlertAction(title: "Set Reminder", style: .default) { [weak self] _ in
-            CarPlayDataStore.shared.onSetRemindersConfirmed?()
-            self?.interfaceController?.popTemplate(animated: true, completion: nil)
-        }
-        let cancel = CPAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
-            self?.interfaceController?.popTemplate(animated: true, completion: nil)
-        }
-        push(CPAlertTemplate(titleVariants: ["Remind me before street cleaning?"], actions: [set, cancel]))
-    }
-
-    private func presentShareAlert() {
-        let ok = CPAlertAction(title: "OK", style: .default) { [weak self] _ in
-            self?.interfaceController?.popTemplate(animated: true, completion: nil)
-        }
-        push(CPAlertTemplate(
-            titleVariants: ["Open Sweepy on your iPhone to share this spot."],
-            actions: [ok]
-        ))
-    }
 
     private func push(_ template: CPAlertTemplate) {
         interfaceController?.pushTemplate(template, animated: true, completion: nil)

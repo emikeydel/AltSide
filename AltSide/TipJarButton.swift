@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct TipJarButton: View {
-    private let tipURL = URL(string: "https://ko-fi.com/laidoffdadproductions")!
+    @State private var showTipPopup = false
 
     var body: some View {
-        Link(destination: tipURL) {
+        Button(action: { showTipPopup = true }) {
             HStack(spacing: 8) {
                 Text("☕")
                     .font(.system(size: 14))
@@ -31,5 +31,10 @@ struct TipJarButton: View {
             )
         }
         .buttonStyle(.plain)
+        .sheet(isPresented: $showTipPopup) {
+            TipPopupView()
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
     }
 }

@@ -14,7 +14,9 @@ enum CarPlayState {
         sideLabel: String,
         schedule: String,
         nextCleaning: String,
-        spotID: UUID
+        spotID: UUID,
+        leftLabel: String,
+        rightLabel: String
     )
 }
 
@@ -33,7 +35,6 @@ final class CarPlayDataStore {
     var onFindParkingTapped: (() -> Void)?
     var onSaveLeftTapped: (() -> Void)?
     var onSaveRightTapped: (() -> Void)?
-    var onParkAgainConfirmed: (() -> Void)?
     var onSetRemindersConfirmed: (() -> Void)?
 
     /// Called on the main queue whenever the state changes.

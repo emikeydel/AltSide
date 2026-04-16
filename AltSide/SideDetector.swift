@@ -9,6 +9,15 @@ enum SideDetector {
 
         var displayName: String { rawValue.capitalized }
 
+        var opposite: StreetSide {
+            switch self {
+            case .north: return .south
+            case .south: return .north
+            case .east:  return .west
+            case .west:  return .east
+            }
+        }
+
         /// Odd-numbered addresses are on the north/west side in NYC.
         /// Even-numbered addresses are on the south/east side.
         var addressParity: String {
@@ -73,17 +82,20 @@ enum SideDetector {
     }
 
     /// Infers street orientation from a street name. NYC avenues tend to run N-S;
-    /// streets (and named crosstown streets) run E-W.
+    /// numbered streets run E-W. Named streets (e.g. "Clinton Street") cannot be
+    /// reliably classified from name alone — callers should prefer data-driven
+    /// orientation derived from the sign entries' N/S/E/W side labels.
     static func inferOrientation(from streetName: String) -> StreetOrientation {
         let upper = streetName.uppercased()
         let avenueSuffixes = ["AVENUE", "AVE", "BOULEVARD", "BLVD", "DRIVE", "DR", "PLACE", "PL"]
-        let numbered = upper.contains("STREET") || upper.contains("ST ") || upper.first?.isNumber == true
-
-        if numbered { return .eastWest }
+        // Avenue-type suffixes run N-S (check before digit test so "7 AVENUE" works).
         for suffix in avenueSuffixes {
             if upper.hasSuffix(suffix) || upper.contains(" \(suffix) ") { return .northSouth }
         }
-        return .eastWest // NYC default
+        // Numbered streets (contain a digit) run E-W: "WEST 79 STREET", "EAST 34 ST".
+        // Named streets like "CLINTON STREET" have no digit and fall through to the default.
+        if upper.contains(where: { $0.isNumber }) { return .eastWest }
+        return .eastWest // conservative default; callers should validate against sign data
     }
 
     /// Cross-checks a detected side against address number parity (NYC convention).
