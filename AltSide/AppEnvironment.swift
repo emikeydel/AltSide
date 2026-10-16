@@ -20,6 +20,12 @@ private struct NotificationManagerKey: EnvironmentKey {
 private struct LiveActivityManagerKey: EnvironmentKey {
     static let defaultValue = LiveActivityManager()
 }
+private struct ASPStatusManagerKey: EnvironmentKey {
+    static let defaultValue = ASPStatusManager()
+}
+private struct StreetPermitManagerKey: EnvironmentKey {
+    static let defaultValue = StreetPermitManager()
+}
 
 extension EnvironmentValues {
     var locationManager: LocationManager {
@@ -45,5 +51,13 @@ extension EnvironmentValues {
     var liveActivityManager: LiveActivityManager {
         get { self[LiveActivityManagerKey.self] }
         set { self[LiveActivityManagerKey.self] = newValue }
+    }
+    var aspStatus: ASPStatusManager {
+        get { self[ASPStatusManagerKey.self] }
+        set { self[ASPStatusManagerKey.self] = newValue }
+    }
+    var permits: StreetPermitManager {
+        get { self[StreetPermitManagerKey.self] }
+        set { self[StreetPermitManagerKey.self] = newValue }
     }
 }

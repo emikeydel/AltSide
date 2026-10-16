@@ -16,6 +16,7 @@ final class CarPlayCoordinator {
     // Pending data captured during scout-mode resolution (used when user taps Save).
     private var pendingStreet: BlockMatcher.ResolvedStreet?
     private var pendingEntries: [StreetCleaningEntry] = []
+    private var pendingBlock: (from: String, to: String)?
     private var pendingLeftSide: SideDetector.StreetSide = .north
     private var pendingRightSide: SideDetector.StreetSide = .south
 
@@ -169,14 +170,21 @@ final class CarPlayCoordinator {
                 coordinate: snapped
             )
 
-            // Derive orientation from sign data — more reliable than street name inference.
-            let nsCount = allEntries.filter { $0.normalizedSide == .east || $0.normalizedSide == .west }.count
-            let ewCount = allEntries.filter { $0.normalizedSide == .north || $0.normalizedSide == .south }.count
+            // Narrow the bbox fetch (every street nearby) down to this street's block —
+            // same resolver as the iPhone save flow and Scout mode.
+            let block = CleaningDataManager.blockSchedule(
+                allEntries, streetName: street.normalizedName, coordinate: snapped
+            )
+            let blockEntries = block.entries
+
+            // Orientation from the block's sign data — more reliable than street name inference.
+            let nsCount = blockEntries.filter { $0.normalizedSide == .east || $0.normalizedSide == .west }.count
+            let ewCount = blockEntries.filter { $0.normalizedSide == .north || $0.normalizedSide == .south }.count
             let (side1, side2): (SideDetector.StreetSide, SideDetector.StreetSide) = nsCount > ewCount
                 ? (.east, .west) : (.north, .south)
 
-            let sched1 = scheduleText(allEntries.filter { $0.normalizedSide == side1 })
-            let sched2 = scheduleText(allEntries.filter { $0.normalizedSide == side2 })
+            let sched1 = smartScheduleText(blockEntries.filter { $0.normalizedSide == side1 })
+            let sched2 = smartScheduleText(blockEntries.filter { $0.normalizedSide == side2 })
 
             // Map cardinal sides to Left / Right based on the driver's current heading.
             let side1IsLeft = (side1.relativeLabel(facing: heading) == "Left")
@@ -188,7 +196,8 @@ final class CarPlayCoordinator {
             }
 
             pendingStreet   = street
-            pendingEntries  = allEntries
+            pendingEntries  = blockEntries
+            pendingBlock    = block.fromStreet.isEmpty ? nil : (block.fromStreet, block.toStreet)
             pendingLeftSide  = leftSide
             pendingRightSide = rightSide
 
@@ -222,12 +231,16 @@ final class CarPlayCoordinator {
                 return true
             }
 
+        // Dataset cross streets are ALL-CAPS — match MainMapView.createSpot's display format.
+        func titleCase(_ s: String) -> String {
+            s.split(separator: " ").map { $0.capitalized }.joined(separator: " ")
+        }
         let coord = lastResolvedCoordinate ?? locationManager.coordinate
         let spot = ParkingSpot(
             coordinate: coord,
             streetName: street.name,
-            crossStreetFrom: street.crossStreetFrom,
-            crossStreetTo: street.crossStreetTo,
+            crossStreetFrom: pendingBlock.map { titleCase($0.from) } ?? street.crossStreetFrom,
+            crossStreetTo:   pendingBlock.map { titleCase($0.to) }   ?? street.crossStreetTo,
             side: side,
             cleaningDays: deduped.compactMap { $0.weekdayInt },
             cleaningStartHour:   deduped.first?.startHour   ?? 8,
@@ -328,5 +341,50 @@ final class CarPlayCoordinator {
             .sorted { ($0.weekdayInt ?? 0) < ($1.weekdayInt ?? 0) }
         guard !unique.isEmpty else { return "No restrictions" }
         return unique.map { "\(String($0.weekDay.prefix(3))) \($0.timeWindowDisplay)" }.joined(separator: "\n")
+    }
+
+    /// Suspension-aware schedule for CarPlay scouting screen.
+    /// Shows the next cleaning date and flags it if ASP is suspended that day,
+    /// then finds the next non-suspended occurrence.
+    private func smartScheduleText(_ entries: [StreetCleaningEntry]) -> String {
+        let now = Date()
+        let upcoming = entries
+            .compactMap { e -> (Date, StreetCleaningEntry)? in
+                guard let d = e.nextCleaningDate(from: now) else { return nil }
+                return (d, e)
+            }
+            .sorted { $0.0 < $1.0 }
+
+        guard let (nextDate, nextEntry) = upcoming.first else { return "No restrictions" }
+
+        let df = DateFormatter()
+        df.dateFormat = "EEE MMM d"
+
+        guard ASPSuspensionCalendar.isSuspended(on: nextDate) else {
+            return "\(df.string(from: nextDate)) · \(nextEntry.timeWindowDisplay)"
+        }
+
+        // Next cleaning is suspended — find the earliest non-suspended occurrence.
+        // First check if another weekday for this side comes sooner and isn't suspended.
+        var effectivePair: (Date, StreetCleaningEntry)? = upcoming
+            .first { !ASPSuspensionCalendar.isSuspended(on: $0.0) }
+
+        // If no other weekday helps, advance the suspended entry week by week.
+        if effectivePair == nil {
+            var candidate = nextDate
+            for _ in 0..<8 {
+                candidate = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: candidate) ?? candidate
+                if !ASPSuspensionCalendar.isSuspended(on: candidate) {
+                    effectivePair = (candidate, nextEntry)
+                    break
+                }
+            }
+        }
+
+        let suspendedStr = df.string(from: nextDate)
+        if let (effectiveDate, effectiveEntry) = effectivePair {
+            return "\(suspendedStr) · Suspended ✓\nNext: \(df.string(from: effectiveDate)) · \(effectiveEntry.timeWindowDisplay)"
+        }
+        return "\(suspendedStr) · Suspended ✓"
     }
 }

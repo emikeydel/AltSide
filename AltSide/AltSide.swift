@@ -3,31 +3,21 @@ import SwiftData
 
 @main
 struct AltSideApp: App {
-    // Shared container used by both SwiftUI @Query and CarPlayCoordinator.
-    // Creating it once ensures both read/write to the same SQLite store.
-    private let sharedModelContainer: ModelContainer = {
-        try! ModelContainer(for: ParkingSpot.self, ReminderConfig.self)
-    }()
-
-    @State private var locationManager      = LocationManager()
-    @State private var motionManager        = MotionManager()
-    @State private var bluetoothManager     = BluetoothManager()
-    @State private var cleaningData         = CleaningDataManager()
-    @State private var notificationManager  = NotificationManager()
-    @State private var liveActivityManager  = LiveActivityManager()
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var showSplash = true
-    @State private var carPlayCoordinator: CarPlayCoordinator?
 
     var body: some Scene {
         WindowGroup {
             ZStack {
                 MainMapView()
-                    .environment(\.locationManager, locationManager)
-                    .environment(\.motionManager, motionManager)
-                    .environment(\.bluetoothManager, bluetoothManager)
-                    .environment(\.cleaningDataManager, cleaningData)
-                    .environment(\.notificationManager, notificationManager)
-                    .environment(\.liveActivityManager, liveActivityManager)
+                    .environment(\.locationManager, appDelegate.locationManager)
+                    .environment(\.motionManager, appDelegate.motionManager)
+                    .environment(\.bluetoothManager, appDelegate.bluetoothManager)
+                    .environment(\.cleaningDataManager, appDelegate.cleaningData)
+                    .environment(\.notificationManager, appDelegate.notificationManager)
+                    .environment(\.liveActivityManager, appDelegate.liveActivityManager)
+                    .environment(\.aspStatus, appDelegate.aspStatus)
+                    .environment(\.permits, appDelegate.permits)
 
                 if showSplash {
                     SplashScreenView()
@@ -36,18 +26,7 @@ struct AltSideApp: App {
                 }
             }
             .fontDesign(.rounded)
-            .preferredColorScheme(.light)
-            .task { locationManager.startMonitoring() }
-            .task {
-                if carPlayCoordinator == nil {
-                    carPlayCoordinator = CarPlayCoordinator(
-                        locationManager: locationManager,
-                        cleaningDataManager: cleaningData,
-                        notificationManager: notificationManager,
-                        modelContainer: sharedModelContainer
-                    )
-                }
-            }
+            .preferredColorScheme(.dark)
             .task {
                 try? await Task.sleep(for: .seconds(1.8))
                 withAnimation(.easeOut(duration: 0.5)) {
@@ -55,6 +34,6 @@ struct AltSideApp: App {
                 }
             }
         }
-        .modelContainer(sharedModelContainer)
+        .modelContainer(appDelegate.sharedModelContainer)
     }
 }

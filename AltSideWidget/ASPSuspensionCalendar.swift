@@ -7,6 +7,25 @@ import Foundation
 /// Source: https://www.nyc.gov/html/dot/html/motorist/alternate-side-parking.shtml
 enum ASPSuspensionCalendar {
 
+    // MARK: - Live overrides (NYC 311 feed)
+
+    /// One day's status from the live NYC 311 calendar feed.
+    struct LiveDay: Codable, Equatable {
+        let suspended: Bool
+        /// Holiday / reason, e.g. "Election Day" or "Snow removal". Nil when in effect.
+        let name: String?
+    }
+
+    /// Days reported by the live feed, keyed "yyyy-MM-dd" (New York time). Where present
+    /// these win over the bundled list — they include emergency/snow suspensions and dates
+    /// past `lastKnownYear`. Populated by `ASPStatusManager` in the app; empty in the widget.
+    nonisolated(unsafe) static var liveDays: [String: LiveDay] = [:]
+
+    static func dayKey(_ date: Date) -> String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
     // MARK: - Public API
 
     /// Returns true if ASP is suspended on the given date.
@@ -16,6 +35,9 @@ enum ASPSuspensionCalendar {
 
     /// Returns the holiday name if ASP is suspended on the given date, or nil if not suspended.
     static func holidayName(on date: Date = .now) -> String? {
+        if let live = liveDays[dayKey(date)] {
+            return live.suspended ? (live.name ?? "ASP suspended") : nil
+        }
         let cal = Calendar.current
         let comps = cal.dateComponents([.year, .month, .day], from: date)
         guard let year = comps.year, let month = comps.month, let day = comps.day else { return nil }
@@ -24,20 +46,43 @@ enum ASPSuspensionCalendar {
 
     /// The next scheduled suspension after the given date, if known.
     static func nextSuspension(after date: Date = .now) -> (date: Date, holiday: String)? {
+        upcomingSuspensions(after: date, limit: 1).first
+    }
+
+    /// Upcoming suspensions after the given date, soonest first — bundled calendar merged
+    /// with the live feed. Empty once both run out (see `lastKnownYear`).
+    static func upcomingSuspensions(after date: Date = .now, limit: Int = 3) -> [(date: Date, holiday: String)] {
         let cal = Calendar.current
         let year = cal.component(.year, from: date)
-        let candidates = (entries[year] ?? []) + (entries[year + 1] ?? [])
+        var byDay: [String: (date: Date, holiday: String)] = [:]
 
-        return candidates
-            .compactMap { entry -> (Date, String)? in
-                var c = DateComponents()
-                c.year = entry.year; c.month = entry.month; c.day = entry.day
-                guard let d = cal.date(from: c), d > date else { return nil }
-                return (d, entry.name)
+        for entry in (entries[year] ?? []) + (entries[year + 1] ?? []) {
+            var c = DateComponents()
+            c.year = entry.year; c.month = entry.month; c.day = entry.day
+            guard let d = cal.date(from: c), d > date else { continue }
+            byDay[dayKey(d)] = (d, entry.name)
+        }
+        for (key, live) in liveDays {
+            let parts = key.split(separator: "-").compactMap { Int($0) }
+            guard parts.count == 3 else { continue }
+            var c = DateComponents()
+            c.year = parts[0]; c.month = parts[1]; c.day = parts[2]
+            guard let d = cal.date(from: c), d > date else { continue }
+            if live.suspended {
+                byDay[key] = (d, live.name ?? byDay[key]?.holiday ?? "ASP suspended")
+            } else {
+                byDay[key] = nil   // feed says rules are in effect after all
             }
-            .sorted { $0.0 < $1.0 }
-            .first
+        }
+
+        return byDay.values
+            .sorted { $0.date < $1.date }
+            .prefix(limit)
+            .map { $0 }
     }
+
+    /// The last year this bundled calendar has dates for.
+    static var lastKnownYear: Int { entries.keys.max() ?? 0 }
 
     // MARK: - Data
 

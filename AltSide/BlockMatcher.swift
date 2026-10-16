@@ -13,34 +13,47 @@ enum BlockMatcher {
         let crossStreetFrom: String
         let crossStreetTo: String
         let orientation: SideDetector.StreetOrientation
-        /// Coordinate snapped to the street centerline by MapKit's reverse geocoder.
-        /// More reliable than raw GPS for sign-proximity filtering.
+        /// The coordinate used for bounding-box sign queries — the original GPS/pin location.
         let snappedCoordinate: CLLocationCoordinate2D
     }
 
-    /// Reverse-geocodes a coordinate into a ResolvedStreet using iOS 26 MapKit API.
+    /// Reverse-geocodes a coordinate into a ResolvedStreet using CLGeocoder.
     static func resolve(coordinate: CLLocationCoordinate2D) async throws -> ResolvedStreet {
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
 
-        // iOS 26: MKReverseGeocodingRequest replaces CLGeocoder
-        guard let request = MKReverseGeocodingRequest(location: location) else {
-            throw BlockMatcherError.noResult
-        }
-        let mapItems = try await request.mapItems
-        guard let item = mapItems.first else { throw BlockMatcherError.noResult }
+        let placemarks = try await CLGeocoder().reverseGeocodeLocation(location)
+        guard let placemark = placemarks.first else { throw BlockMatcherError.noResult }
 
-        // item.location.coordinate is snapped to the street centerline by MapKit —
-        // more reliable than the raw GPS coordinate for sign-proximity filtering.
-        let snapped = item.location.coordinate
-
-        // Parse street name and house number from shortAddress
-        // shortAddress is typically "123 West 79th Street, New York"
-        let shortAddress = item.address?.shortAddress ?? item.name ?? ""
+        // CLGeocoder's placemark.location is an address-range centroid, not a road snap —
+        // it can be hundreds of metres from the actual pin. Use the original coordinate so
+        // the bounding-box query is centred on where the user actually parked.
+        let snapped = coordinate
+        let shortAddress = [placemark.subThoroughfare, placemark.thoroughfare]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
         let (streetName, houseNumber) = parseStreetAndNumber(from: shortAddress)
+        // Use subAdministrativeArea (county) — CLGeocoder's locality may return a neighborhood
+        // name ("Carroll Gardens", "Flushing") rather than the borough.
+        let borough: String = {
+            // Coordinate bounding-box is more reliable than CLGeocoder's subAdministrativeArea —
+            // CLGeocoder sometimes returns "New York" (Manhattan's county) for Brooklyn, Queens,
+            // and Bronx addresses, causing the wrong borough to be queried.
+            let coordBorough = CleaningDataManager.borough(for: coordinate)
+            if !coordBorough.isEmpty { return coordBorough }
 
-        // City/borough from addressRepresentations
-        let cityName = item.addressRepresentations?.cityName ?? ""
-        let borough  = mapToBorough(cityName: cityName, fullAddress: item.address?.fullAddress ?? "")
+            // Fallback: parse geocoder county/locality fields.
+            switch placemark.subAdministrativeArea?.uppercased() {
+            case "NEW YORK": return "Manhattan"
+            case "KINGS":    return "Brooklyn"
+            case "QUEENS":   return "Queens"
+            case "BRONX":    return "Bronx"
+            case "RICHMOND": return "Staten Island"
+            default:
+                let combined = [placemark.subLocality, placemark.locality, placemark.administrativeArea]
+                    .compactMap { $0 }.joined(separator: " ")
+                return mapToBorough(cityName: combined, fullAddress: "")
+            }
+        }()
+
         // Throw if the coordinate is outside NYC — avoids fetching "COUNTY ROAD 3100" etc.
         guard !borough.isEmpty else { throw BlockMatcherError.noResult }
 
@@ -136,6 +149,9 @@ enum BlockMatcher {
         }
         guard !blocks.isEmpty else { return nil }
         if blocks.count == 1 { return blocks[0] }
+        // Cap to 15 unique blocks — each needs up to 2 MapKit searches (30 max),
+        // safely under the 50-requests/60 s rate limit.
+        let capped = blocks.prefix(15)
 
         let userLocation = CLLocation(latitude: userCoordinate.latitude, longitude: userCoordinate.longitude)
         let hintRegion = MKCoordinateRegion(
@@ -148,7 +164,7 @@ enum BlockMatcher {
 
         func tc(_ s: String) -> String { s.split(separator: " ").map { $0.capitalized }.joined(separator: " ") }
 
-        for block in blocks {
+        for block in capped {
             let queries = [
                 "\(tc(block.from)) and \(tc(streetName)), \(borough), NY",
                 "\(tc(block.from)), \(borough), NY",
@@ -159,7 +175,7 @@ enum BlockMatcher {
                 request.naturalLanguageQuery = query
                 request.region = hintRegion
                 if let response = try? await MKLocalSearch(request: request).start(),
-                   let location = response.mapItems.first?.location {
+                   let location = response.mapItems.first?.placemark.location {
                     loc = location; break
                 }
             }
@@ -251,7 +267,7 @@ enum BlockMatcher {
 
         // Extract street names from results; exclude the user's own street.
         let crossStreets = items.compactMap { item -> String? in
-            guard let shortAddr = item.address?.shortAddress else { return nil }
+            guard let shortAddr = item.placemark.shortAddress else { return nil }
             let (street, _) = parseStreetAndNumber(from: shortAddr)
             return street
         }
@@ -272,9 +288,9 @@ enum BlockMatcher {
 // MARK: - Shared MapKit helpers
 
 extension MKPlacemark {
-    /// "123 West 79th Street, New York"  →  "123 West 79th Street"
+    /// e.g. "123 West 79th Street"
     var shortAddress: String? {
-        [subThoroughfare, thoroughfare, locality]
+        [subThoroughfare, thoroughfare]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: " ")

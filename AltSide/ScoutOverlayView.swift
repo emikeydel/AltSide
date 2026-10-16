@@ -7,6 +7,7 @@ struct ScoutBottomPanel: View {
     @Environment(\.cleaningDataManager) private var cleaningDataManager
     var onHelpTap: (() -> Void)? = nil
     let onSaveWithSide: (SideDetector.StreetSide, [StreetCleaningEntry], BlockMatcher.ResolvedStreet) -> Void
+    var onSegmentsUpdated: (([BlockSegment]) -> Void)? = nil
 
     @State private var resolvedStreet: BlockMatcher.ResolvedStreet?
     @State private var allEntries: [StreetCleaningEntry] = []
@@ -346,44 +347,14 @@ struct ScoutBottomPanel: View {
             resolvedStreet = street
             allEntries = entries
 
-            let nearby = CleaningDataManager.proximityFiltered(entries, coordinate: street.snappedCoordinate)
-            let pool = nearby.isEmpty ? entries : nearby
-            let segments = CleaningDataManager.buildSegments(pool, snappedCoordinate: street.snappedCoordinate)
-            let userLoc = CLLocation(latitude: street.snappedCoordinate.latitude, longitude: street.snappedCoordinate.longitude)
-
-            // Per-side block-face filtering: try ALL nearby segments for each side and
-            // collect entries from any that fuzzy-match. closestSignDedup (below) then
-            // picks the entry with the closest sign coordinate per (side, weekday),
-            // ensuring the correct block wins when the user is near a block boundary.
-            // Orientation is derived from sign data — more reliable than street name inference.
-            let nsCount = pool.filter { $0.normalizedSide == .east || $0.normalizedSide == .west }.count
-            let ewCount = pool.filter { $0.normalizedSide == .north || $0.normalizedSide == .south }.count
-            let relevantSides: [SideDetector.StreetSide] = nsCount > ewCount ? [.east, .west] : [.north, .south]
-            var blockFiltered: [StreetCleaningEntry] = []
-            for side in relevantSides {
-                let sideSegs = segments.filter { $0.side == side }
-                if sideSegs.isEmpty {
-                    blockFiltered += pool.filter { $0.normalizedSide == side }
-                } else {
-                    var matched: [StreetCleaningEntry] = []
-                    for seg in sideSegs {
-                        matched += pool.filter { e in
-                            guard e.normalizedSide == side else { return false }
-                            return (BlockMatcher.fuzzyMatch(e.fromStreet, seg.fromStreet) && BlockMatcher.fuzzyMatch(e.toStreet, seg.toStreet))
-                                || (BlockMatcher.fuzzyMatch(e.fromStreet, seg.toStreet)   && BlockMatcher.fuzzyMatch(e.toStreet, seg.fromStreet))
-                        }
-                    }
-                    if matched.isEmpty {
-                        blockFiltered += pool.filter { $0.normalizedSide == side && $0.signXCoord == nil && $0.signYCoord == nil }
-                    } else {
-                        blockFiltered += matched
-                    }
-                }
-            }
-            nearbyEntries = CleaningDataManager.closestSignDedup(
-                blockFiltered.isEmpty ? pool : blockFiltered,
-                coordinate: street.snappedCoordinate
+            // Narrow the bbox fetch (every street nearby) down to this street's block —
+            // same resolver as the save flow and CarPlay so all three agree.
+            let block = CleaningDataManager.blockSchedule(
+                entries, streetName: street.normalizedName, coordinate: street.snappedCoordinate
             )
+            let segments = block.segments
+            let userLoc = CLLocation(latitude: street.snappedCoordinate.latitude, longitude: street.snappedCoordinate.longitude)
+            nearbyEntries = block.entries
             // Drop segments whose centroid is > 400 m from the user — removes stray lines
             // from distant blocks on long streets.
             let filteredSegments = segments.filter {
@@ -391,6 +362,9 @@ struct ScoutBottomPanel: View {
                                                    longitude: $0.centroid.longitude)) < 400
             }
             currentSegments = filteredSegments
+            // Load all nearby streets for the map overlay, fire callback with full set.
+            let nearbySegments = await cleaningDataManager.loadNearbySegments(coordinate: coord)
+            onSegmentsUpdated?(nearbySegments.isEmpty ? filteredSegments : nearbySegments)
             lastResolvedCoordinate = coord
             prefetchNearby(from: street.snappedCoordinate)
         } catch {}

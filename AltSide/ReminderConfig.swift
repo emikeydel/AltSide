@@ -5,7 +5,7 @@ import SwiftData
 class ReminderConfig {
     // Before street cleaning: fires X minutes before sweeper
     var beforeCleaningEnabled: Bool
-    var beforeCleaningMinutes: Int // 15, 30, 60, or 90
+    var beforeCleaningMinutes: Int // 5, 10, 15, or 30
 
     // Evening before: fires at a set time the night before
     var eveningBeforeEnabled: Bool

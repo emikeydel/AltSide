@@ -44,7 +44,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     // MARK: - Schedule Alerts
 
     func scheduleAlerts(for spot: ParkingSpot) async {
-        await cancelAlerts(for: spot.id)
+        // Leave construction-permit alerts alone — they're managed by schedulePermitAlerts.
+        await cancelAlerts(for: spot.id, matching: { !$0.contains(Self.permitIDMarker) })
 
         guard let cleaningDate = spot.nextCleaningDate else { return }
 
@@ -93,10 +94,32 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    func cancelAlerts(for spotID: UUID) async {
+    func cancelAlerts(for spotID: UUID, matching include: (String) -> Bool = { _ in true }) async {
         let pending = await center.pendingNotificationRequests()
-        let ids = pending.filter { $0.identifier.hasPrefix(spotID.uuidString) }.map { $0.identifier }
+        let ids = pending
+            .filter { $0.identifier.hasPrefix(spotID.uuidString) && include($0.identifier) }
+            .map { $0.identifier }
         center.removePendingNotificationRequests(withIdentifiers: ids)
+    }
+
+    // MARK: - Construction permit alerts
+
+    private static let permitIDMarker = "_permit_"
+
+    /// Warns the evening before a construction permit starts on the parked block.
+    /// IDs share the spot's prefix, so clearing the spot cancels these too.
+    func schedulePermitAlerts(for spot: ParkingSpot, permits: [StreetPermit]) async {
+        await cancelAlerts(for: spot.id, matching: { $0.contains(Self.permitIDMarker) })
+        for permit in permits where permit.startsLater {
+            guard let fireDate = eveningBefore(permit.start, hour: 19, minute: 0) else { continue }
+            let content = makeContent(
+                title: "Construction starts on your block tomorrow",
+                body: "\(spot.streetName) · \(permit.kinds.joined(separator: ", ")). Check for posted No Parking signs.",
+                spotID: spot.id
+            )
+            let id = "\(spot.id.uuidString)\(Self.permitIDMarker)\(abs(permit.id.hashValue))"
+            try? await center.add(makeRequest(id: id, content: content, date: fireDate))
+        }
     }
 
     func cancelAllParkingAlerts() async {

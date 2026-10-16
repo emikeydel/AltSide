@@ -127,7 +127,7 @@ struct ReminderSetupView: View {
         VStack(alignment: .leading, spacing: 12) {
             toggleRow(
                 title: "Before street cleaning",
-                subtitle: "Fires \(config.beforeCleaningMinutes < 60 ? "\(config.beforeCleaningMinutes) min" : "1 hr") before the sweeper",
+                subtitle: "Fires \(config.beforeCleaningMinutes) min before the sweeper",
                 isOn: $config.beforeCleaningEnabled
             )
             if config.beforeCleaningEnabled {
@@ -140,9 +140,9 @@ struct ReminderSetupView: View {
 
     private var timingChips: some View {
         HStack(spacing: 8) {
-            ForEach([15, 30, 45, 60], id: \.self) { mins in
+            ForEach([5, 10, 15, 30], id: \.self) { mins in
                 Button(action: { config.beforeCleaningMinutes = mins }) {
-                    Text(mins < 60 ? "\(mins)m" : "\(mins/60)h")
+                    Text("\(mins)m")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(config.beforeCleaningMinutes == mins ? .black : Color.sweepyGray2)
                         .padding(.horizontal, 14)

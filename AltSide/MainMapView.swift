@@ -48,9 +48,14 @@ struct MainMapView: View {
     @State private var isBottomPanelExpanded = false
     @State private var screenHeight: CGFloat = 800
     @State private var showOutsideNYC = false
+    @State private var userDismissedOutsideNYC = false
     @State private var showAddressPicker = false
     @State private var scoutInitialSide: SideDetector.StreetSide? = nil
     @State private var showWelcome = false
+    /// Home (status + street browser) is the first screen on launch. MainMapView stays
+    /// mounted underneath so auto-park detection and notification routing keep working.
+    @State private var showHome = true
+    @State private var backgroundedAt: Date? = nil
     @State private var hasZoomedToUser = false
     @State private var overrideCoordinate: CLLocationCoordinate2D? = nil
     /// Tracks the map center coordinate as the user drags — always the intended save location.
@@ -63,8 +68,20 @@ struct MainMapView: View {
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
     @AppStorage("tipPopupSuppressed") private var tipPopupSuppressed = false
     @State private var showTipPopup = false
+    @State private var scoutSegments: [BlockSegment] = []
+    @State private var browseSegments: [BlockSegment] = []
+    /// Anchor set only when the map drag ENDS — prevents per-frame API hammering.
+    @State private var browseAnchorCoord: CLLocationCoordinate2D? = nil
 
     private var savedSpot: ParkingSpot? { spots.first }
+
+    /// Grid-cell key derived from the on-end anchor so the fetch only fires
+    /// when the user lifts their finger and lands in a new ~500 m cell.
+    private var browseGridKey: String {
+        guard savedSpot == nil, !locationManager.scoutModeActive,
+              let coord = browseAnchorCoord, coord.latitude != 0 else { return "" }
+        return "\(Int(coord.latitude * 200))_\(Int(coord.longitude * 200))"
+    }
 
     var body: some View {
         baseContent
@@ -72,12 +89,26 @@ struct MainMapView: View {
             .onChange(of: bluetoothManager.justDisconnectedFromCar, handleBluetoothDisconnectChange)
             .onChange(of: notificationManager.pendingAction, handlePendingActionChange)
             .task(id: spots.first?.id) { syncWidgetData() }
+            .task(id: browseGridKey) {
+                guard !browseGridKey.isEmpty, let coord = browseAnchorCoord else {
+                    browseSegments = []
+                    return
+                }
+                // Don't clear before await — old segments stay visible during cache lookup.
+                // Replace (not accumulate) to prevent Metal buffer overflow.
+                let newSegs = await cleaningDataManager.loadNearbySegments(coordinate: coord)
+                browseSegments = newSegs
+            }
             .onChange(of: spots) { _, _ in syncWidgetData() }
             .onReceive(Timer.publish(every: 300, on: .main, in: .common).autoconnect()) { _ in
-                if let spot = spots.first { liveActivityManager.startIfNeeded(for: spot) }
+                if let spot = spots.first {
+                    liveActivityManager.startIfNeeded(for: spot)
+                    Task { await liveActivityManager.checkUrgentAlerts(for: spot) }
+                }
             }
             .onChange(of: scenePhase, handleScenePhaseChange)
             .onChange(of: locationManager.coordinate.latitude, handleLatitudeChange)
+            .onChange(of: locationManager.authorizationStatus, handleAuthorizationChange)
             .onChange(of: locationManager.heading, handleHeadingChange)
             .onChange(of: locationManager.scoutModeActive, handleScoutModeActiveChange)
     }
@@ -95,40 +126,31 @@ struct MainMapView: View {
                 ZStack(alignment: .bottom) {
                     map
 
-                    // Always-on center pin — shows where the spot will be saved.
-                    // Hidden when address-picker pin is active (Annotation plays that role).
-                    if savedSpot == nil && !locationManager.scoutModeActive && overrideCoordinate == nil {
+                    if !locationManager.scoutModeActive && overrideCoordinate == nil {
                         centerPinOverlay
                             .zIndex(4)
                             .allowsHitTesting(false)
                     }
 
-                    // Top buttons — hidden in scout mode
                     if !locationManager.scoutModeActive {
                         VStack {
                             HStack {
-                                // Help button — top left
-                                Button(action: { showWelcome = true }) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(Color.sweepySurface2)
-                                            .frame(width: 36, height: 36)
-                                            .shadow(radius: 4)
-                                        Text("?")
-                                            .font(.system(size: 15, weight: .bold))
-                                            .foregroundStyle(Color.sweepyGray2)
-                                    }
-                                }
-                                .padding(.leading, 16)
-                                .padding(.top, 60)
                                 Spacer()
-                                // Center on user location — top right
                                 Button(action: {
                                     overrideCoordinate = nil
                                     pinCoordinate = nil
                                     let coord = locationManager.coordinate
                                     withAnimation {
                                         cameraPosition = .camera(MapCamera(centerCoordinate: coord, distance: 400))
+                                    }
+                                    // If the user's real location is outside NYC, re-show the outside-NYC screen
+                                    if !showOutsideNYC && !userDismissedOutsideNYC {
+                                        let borough = CleaningDataManager.borough(for: coord)
+                                        if borough.isEmpty {
+                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                                showOutsideNYC = true
+                                            }
+                                        }
                                     }
                                 }) {
                                     ZStack {
@@ -142,7 +164,7 @@ struct MainMapView: View {
                                     }
                                 }
                                 .padding(.trailing, 16)
-                                .padding(.top, 60)
+                                .padding(.top, SweepyNavBar.height + 8)
                             }
                             Spacer()
                         }
@@ -152,12 +174,20 @@ struct MainMapView: View {
                     bottomPanelOverlay
 
                     if showOutsideNYC {
-                        OutsideNYCView { coordinate, _ in
-                            overrideCoordinate = coordinate
-                            let cam = MapCameraPosition.camera(MapCamera(centerCoordinate: coordinate, distance: 400))
-                            withAnimation { cameraPosition = cam }
-                            showOutsideNYC = false
-                        }
+                        OutsideNYCView(
+                            onLocationSelected: { coordinate, _ in
+                                overrideCoordinate = coordinate
+                                let cam = MapCameraPosition.camera(MapCamera(centerCoordinate: coordinate, distance: 400))
+                                withAnimation { cameraPosition = cam }
+                                showOutsideNYC = false
+                            },
+                            onDismiss: {
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                    showOutsideNYC = false
+                                }
+                                userDismissedOutsideNYC = true
+                            }
+                        )
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                         .zIndex(10)
                     }
@@ -166,6 +196,37 @@ struct MainMapView: View {
                 .transition(.opacity)
             }
         }
+        .overlay {
+            if showHome {
+                HomeView(
+                    savedSpot: savedSpot,
+                    onParkHere: { coord in parkFromHome(at: coord) },
+                    onOpenCar: { withAnimation { showHome = false } },
+                    onHelp: { showWelcome = true }
+                )
+                .transition(.opacity)
+            }
+        }
+        // Main nav — one bar above every scene so Home is always in the same place.
+        .overlay(alignment: .top) {
+            SweepyNavBar(
+                selected: showHome ? .home : .parking,
+                hasSavedSpot: savedSpot != nil,
+                onSelect: { tab in
+                    withAnimation {
+                        switch tab {
+                        case .home:
+                            if locationManager.scoutModeActive { locationManager.scoutModeActive = false }
+                            showHome = true
+                        case .parking:
+                            showHome = false
+                        }
+                    }
+                },
+                onHelp: { showWelcome = true }
+            )
+        }
+        .animation(.easeInOut(duration: 0.25), value: showHome)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: savedSpot == nil)
         .onAppear {
             if !hasSeenWelcome { showWelcome = true }
@@ -233,6 +294,17 @@ struct MainMapView: View {
                     savedSpotPin(for: spot)
                 }
             }
+            ForEach(scoutSegments) { segment in
+                let coords = [segment.fromCoord, segment.toCoord]
+                MapPolyline(coordinates: coords)
+                    .stroke(segment.isSoon ? Color.sweepyAmber : Color.sweepyGreen,
+                            style: StrokeStyle(lineWidth: 5, lineCap: .round))
+            }
+            ForEach(browseSegments) { segment in
+                MapPolyline(coordinates: [segment.fromCoord, segment.toCoord])
+                    .stroke(segment.isSoon ? Color.sweepyAmber : Color.sweepyGreen,
+                            style: StrokeStyle(lineWidth: 5, lineCap: .round))
+            }
         }
         .mapStyle(.standard)
         .environment(\.colorScheme, .light)
@@ -245,10 +317,13 @@ struct MainMapView: View {
         .onMapCameraChange(frequency: .continuous) { @MainActor context in
             guard savedSpot == nil, !locationManager.scoutModeActive else { return }
             pinCoordinate = context.camera.centerCoordinate
-            // Keep the address annotation tracking the camera so user can fine-tune position
             if overrideCoordinate != nil {
                 overrideCoordinate = context.camera.centerCoordinate
             }
+        }
+        .onMapCameraChange(frequency: .onEnd) { @MainActor context in
+            guard savedSpot == nil, !locationManager.scoutModeActive else { return }
+            browseAnchorCoord = context.camera.centerCoordinate
         }
         .ignoresSafeArea()
     }
@@ -338,6 +413,9 @@ struct MainMapView: View {
                             withAnimation { locationManager.scoutModeActive = false }
                             let coord = activeCoordinate
                             createSpot(street: street, side: side, confirmedEntries: entries, userCoordinate: coord)
+                        },
+                        onSegmentsUpdated: { segments in
+                            scoutSegments = segments
                         }
                     )
                 } else {
@@ -415,11 +493,14 @@ struct MainMapView: View {
                         }
                     },
                     onRefresh: {
-                        let fresh = await cleaningDataManager.loadSchedule(
+                        let all = await cleaningDataManager.loadSchedule(
                             streetName: street.normalizedName,
                             borough: street.borough,
                             coordinate: street.snappedCoordinate
                         )
+                        let fresh = CleaningDataManager.blockSchedule(
+                            all, streetName: street.normalizedName, coordinate: street.snappedCoordinate
+                        ).entries
                         streetEntries = fresh
                         return fresh
                     },
@@ -458,6 +539,18 @@ struct MainMapView: View {
                         }
                         pendingSpot = nil
                         overrideCoordinate = nil
+                        // Reset camera — same animation as initial app launch
+                        hasZoomedToUser = false
+                        cameraPosition = .camera(MapCamera(
+                            centerCoordinate: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
+                            distance: 50_000
+                        ))
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                            let coord = locationManager.coordinate
+                            let cam = MapCameraPosition.camera(MapCamera(centerCoordinate: coord, distance: 400))
+                            withAnimation(.easeInOut(duration: 1.2)) { cameraPosition = cam }
+                            hasZoomedToUser = true
+                        }
                     }
                 )
                 .presentationDetents([.large])
@@ -527,14 +620,40 @@ struct MainMapView: View {
     }
 
     private func handleScenePhaseChange(_: ScenePhase, _ phase: ScenePhase) {
+        if phase == .background { backgroundedAt = .now }
         if phase == .active, let spot = spots.first {
             liveActivityManager.startIfNeeded(for: spot)
         }
+        // Reopening the app after a while lands on Home, unless a flow is in progress.
+        if phase == .active, let since = backgroundedAt, Date.now.timeIntervalSince(since) > 300,
+           activeModal == nil, !locationManager.scoutModeActive {
+            showHome = true
+        }
+        if phase == .active { backgroundedAt = nil }
+    }
+
+    /// "I parked here" on Home: move the save map to the pin and start the save flow.
+    private func parkFromHome(at coord: CLLocationCoordinate2D) {
+        overrideCoordinate = nil
+        pinCoordinate = coord
+        browseAnchorCoord = coord
+        hasZoomedToUser = true   // don't let the first GPS fix yank the map back
+        cameraPosition = .camera(MapCamera(centerCoordinate: coord, distance: 400))
+        triggerSaveFlow(at: coord)
     }
 
     private func handleHeadingChange(_: Double, _ heading: Double) {
         guard locationManager.scoutModeActive, heading >= 0 else { return }
         updateScoutCamera()
+    }
+
+    private func handleAuthorizationChange(_: CLAuthorizationStatus, _ status: CLAuthorizationStatus) {
+        guard !showOutsideNYC, !userDismissedOutsideNYC, overrideCoordinate == nil else { return }
+        if status == .denied || status == .restricted {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                showOutsideNYC = true
+            }
+        }
     }
 
     private func handleLatitudeChange(_: Double, _ lat: Double) {
@@ -543,7 +662,7 @@ struct MainMapView: View {
             updateScoutCamera()
             return
         }
-        if !showOutsideNYC {
+        if !showOutsideNYC && !userDismissedOutsideNYC {
             let borough = CleaningDataManager.borough(for: locationManager.coordinate)
             if borough.isEmpty {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
@@ -555,12 +674,18 @@ struct MainMapView: View {
             hasZoomedToUser = true
             let coord = locationManager.coordinate
             pinCoordinate = coord
+            browseAnchorCoord = coord   // trigger initial browse segment load
             let cam = MapCameraPosition.camera(MapCamera(centerCoordinate: coord, distance: 400))
             withAnimation { cameraPosition = cam }
         }
     }
 
     private func handleScoutModeActiveChange(_: Bool, _ active: Bool) {
+        if active {
+            browseSegments = []
+        } else {
+            scoutSegments = []
+        }
         guard active, overrideCoordinate == nil else { return }
         updateScoutCamera()
     }
@@ -576,6 +701,7 @@ struct MainMapView: View {
     }
 
 private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
+        showHome = false
         bestBlock = nil
         isResolvingStreet = true
         Task { @MainActor in
@@ -588,103 +714,40 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
                     coordinate: snapped
                 )
 
-                let nearby = CleaningDataManager.proximityFiltered(allEntries, coordinate: snapped)
-                let pool = nearby.isEmpty ? allEntries : nearby
+                // Narrow the bbox fetch (every street nearby) down to this street's block.
+                let block = CleaningDataManager.blockSchedule(
+                    allEntries, streetName: street.normalizedName, coordinate: snapped
+                )
 
-                // Build block-face segments from sign coordinates (for display + block matching).
-                let segments = CleaningDataManager.buildSegments(pool, snappedCoordinate: snapped)
-                let userLoc = CLLocation(latitude: snapped.latitude, longitude: snapped.longitude)
+                // Street bearing from the matched block — SidePickerView only receives deduped
+                // entries, which are too sparse to compute a reliable bearing from.
+                streetBearing = block.streetBearing
 
-                // Find the block face whose centroid is closest to the snapped coordinate.
-                // This identifies the user's specific block without extra geocoding calls.
-                let nearestSeg = segments.min {
-                    userLoc.distance(from: CLLocation(latitude: $0.centroid.latitude, longitude: $0.centroid.longitude))
-                    < userLoc.distance(from: CLLocation(latitude: $1.centroid.latitude, longitude: $1.centroid.longitude))
-                }
+                var deduped = block.entries
+                var blockFrom = block.fromStreet
+                var blockTo   = block.toStreet
 
-                // Compute street bearing from the nearest segment's endpoints while we have
-                // the full pool — SidePickerView only receives deduped entries which are
-                // too sparse to compute a reliable bearing from.
-                if let seg = nearestSeg {
-                    let φ1 = seg.fromCoord.latitude  * .pi / 180
-                    let φ2 = seg.toCoord.latitude    * .pi / 180
-                    let Δλ = (seg.toCoord.longitude - seg.fromCoord.longitude) * .pi / 180
-                    let y  = sin(Δλ) * cos(φ2)
-                    let x  = cos(φ1) * sin(φ2) - sin(φ1) * cos(φ2) * cos(Δλ)
-                    streetBearing = (atan2(y, x) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
-                } else {
-                    streetBearing = nil
-                }
-
-                var blockFiltered: [StreetCleaningEntry]
-                let blockFrom: String
-                let blockTo: String
-
-                if let seg = nearestSeg {
-                    blockFrom = seg.fromStreet
-                    blockTo   = seg.toStreet
-                    // Per-side block filtering: each side uses its own nearest segment so that
-                    // null-coord entries (which may have different from/to than the opposite side)
-                    // are not excluded. Null-coord entries are always included unconditionally
-                    // since they cannot be filtered spatially.
-                    // Derive orientation from sign data — more reliable than street name
-                    // inference for named streets like "Clinton Street" (runs N-S).
-                    let nsPoolCount = pool.filter { $0.normalizedSide == .east || $0.normalizedSide == .west }.count
-                    let ewPoolCount = pool.filter { $0.normalizedSide == .north || $0.normalizedSide == .south }.count
-                    let relevantSides: [SideDetector.StreetSide] = nsPoolCount > ewPoolCount
-                        ? [.east, .west] : [.north, .south]
-                    blockFiltered = []
-                    for side in relevantSides {
-                        let sideSegs = segments.filter { $0.side == side }
-                        if let nearest = sideSegs.min(by: {
-                            userLoc.distance(from: CLLocation(latitude: $0.centroid.latitude, longitude: $0.centroid.longitude))
-                            < userLoc.distance(from: CLLocation(latitude: $1.centroid.latitude, longitude: $1.centroid.longitude))
-                        }) {
-                            // Apply from/to block match to all entries (geocoded AND null-coord).
-                            // The old null-coord bypass let entries from distant blocks on the same
-                            // street pass through, causing wrong schedules to be selected.
-                            let matched = pool.filter { e in
-                                guard e.normalizedSide == side else { return false }
-                                return (BlockMatcher.fuzzyMatch(e.fromStreet, nearest.fromStreet) && BlockMatcher.fuzzyMatch(e.toStreet, nearest.toStreet)) ||
-                                       (BlockMatcher.fuzzyMatch(e.fromStreet, nearest.toStreet)   && BlockMatcher.fuzzyMatch(e.toStreet, nearest.fromStreet))
-                            }
-                            if matched.isEmpty {
-                                // Fuzzy match failed (name variation). Fall back to null-coord
-                                // entries only — geocoded entries outside the match are wrong block.
-                                blockFiltered += pool.filter { $0.normalizedSide == side && $0.signXCoord == nil && $0.signYCoord == nil }
-                            } else {
-                                blockFiltered += matched
-                            }
-                        } else {
-                            blockFiltered += pool.filter { $0.normalizedSide == side }
-                        }
-                    }
-                    // Safety net: if block matching produced no entries for a primary side
-                    // (e.g. due to name-variation fuzzy-match failure), fall back to all
-                    // proximity-filtered entries for that side so the schedule isn't blank.
-                    for side in relevantSides where !blockFiltered.contains(where: { $0.normalizedSide == side }) {
-                        blockFiltered += pool.filter { $0.normalizedSide == side }
-                    }
-                } else {
-                    // No geocoded signs — fall back to geocoding-based block matching
-                    let best = await BlockMatcher.findBestBlock(
-                        entries: pool,
+                if deduped.isEmpty {
+                    // Resolved street has no data at all. Fall back to MapKit matching
+                    // against nearby geocoded blocks (signs with NULL-coord gaps).
+                    let geocoded = allEntries.filter { $0.signXCoord != nil && $0.signYCoord != nil }
+                    let nearby   = CleaningDataManager.proximityFiltered(geocoded, coordinate: snapped)
+                    let geoPool  = nearby.isEmpty ? geocoded : nearby
+                    if let best = await BlockMatcher.findBestBlock(
+                        entries: geoPool,
                         streetName: street.normalizedName,
                         borough: street.borough,
                         userCoordinate: saveCoord ?? activeCoordinate
-                    )
-                    blockFiltered = best.map { b in pool.filter { e in
-                        (BlockMatcher.fuzzyMatch(e.fromStreet, b.from) && BlockMatcher.fuzzyMatch(e.toStreet, b.to)) ||
-                        (BlockMatcher.fuzzyMatch(e.fromStreet, b.to)   && BlockMatcher.fuzzyMatch(e.toStreet, b.from))
-                    }} ?? pool
-                    blockFrom = best?.from ?? ""
-                    blockTo   = best?.to   ?? ""
+                    ) {
+                        let matched = geoPool.filter { e in
+                            (BlockMatcher.fuzzyMatch(e.fromStreet, best.from) && BlockMatcher.fuzzyMatch(e.toStreet, best.to)) ||
+                            (BlockMatcher.fuzzyMatch(e.fromStreet, best.to)   && BlockMatcher.fuzzyMatch(e.toStreet, best.from))
+                        }
+                        deduped   = CleaningDataManager.closestSignDedup(matched, coordinate: snapped)
+                        blockFrom = best.from
+                        blockTo   = best.to
+                    }
                 }
-
-                let deduped = CleaningDataManager.closestSignDedup(
-                    blockFiltered.isEmpty ? pool : blockFiltered,
-                    coordinate: snapped
-                )
 
                 resolvedStreet = street
                 bestBlock = blockFrom.isEmpty ? nil : (from: blockFrom, to: blockTo)
@@ -803,6 +866,7 @@ private func triggerSaveFlow(at saveCoord: CLLocationCoordinate2D? = nil) {
     private func clearSpot(_ spot: ParkingSpot) {
         Task { @MainActor in await notificationManager.cancelAlerts(for: spot.id) }
         Task { @MainActor in await liveActivityManager.endActivity() }
+        liveActivityManager.resetAlertState(for: spot.id.uuidString)
         spot.isActive = false
         try? modelContext.save()
         overrideCoordinate = nil

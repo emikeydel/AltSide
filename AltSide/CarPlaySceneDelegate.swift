@@ -83,12 +83,14 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             CPInformationItem(title: leftLabel,  detail: leftSchedule),
             CPInformationItem(title: rightLabel, detail: rightSchedule),
         ]
-        let saveLeft = CPTextButton(title: "Park on \(leftLabel)", textStyle: .confirm) { _ in
-            CarPlayDataStore.shared.onSaveLeftTapped?()
-        }
-        let saveRight = CPTextButton(title: "Park on \(rightLabel)", textStyle: .normal) { _ in
-            CarPlayDataStore.shared.onSaveRightTapped?()
-        }
+        let saveLeft = CPTextButton(
+            title: "Park \(leftLabel) · \(compactSchedule(leftSchedule))",
+            textStyle: .confirm
+        ) { _ in CarPlayDataStore.shared.onSaveLeftTapped?() }
+        let saveRight = CPTextButton(
+            title: "Park \(rightLabel) · \(compactSchedule(rightSchedule))",
+            textStyle: .normal
+        ) { _ in CarPlayDataStore.shared.onSaveRightTapped?() }
         return CPInformationTemplate(
             title: streetName,
             layout: .leading,
@@ -109,11 +111,11 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     ) -> CPInformationTemplate {
         var items: [CPInformationItem] = [
             CPInformationItem(title: "Parked on", detail: sideLabel),
-            CPInformationItem(title: "Cleaning",  detail: schedule),
         ]
         if !nextCleaning.isEmpty {
-            items.append(CPInformationItem(title: "Move by", detail: nextCleaning))
+            items.append(CPInformationItem(title: "Next cleaning", detail: nextCleaning))
         }
+        items.append(CPInformationItem(title: "Schedule", detail: schedule))
         let asp = CarPlayDataStore.shared.aspSummary
         if !asp.isEmpty {
             items.append(CPInformationItem(title: "ASP Status", detail: asp))
@@ -130,6 +132,26 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             items: items,
             actions: [saveLeft, saveRight]
         )
+    }
+
+    // MARK: - Helpers
+
+    /// Returns the first line of a multi-line schedule string in compact form.
+    /// "Mon 8:00 – 9:30\nThu 8:00 – 9:30" → "Mon 8–9:30 AM"
+    /// "No restrictions" or "—" pass through unchanged.
+    private func compactSchedule(_ schedule: String) -> String {
+        let first = schedule.components(separatedBy: "\n").first ?? schedule
+        guard first != "No restrictions", first != "—", first != "-" else { return first }
+        // Suspended lines pass through as-is ("Mon Jun 19 · Suspended ✓").
+        if first.contains("Suspended") { return first }
+        // Collapse "8:00 – 9:30" → "8–9:30 AM" by stripping :00.
+        var compact = first
+        compact = compact.replacingOccurrences(of: ":00", with: "")
+        compact = compact.replacingOccurrences(of: " – ", with: "–")
+        if !compact.contains("AM") && !compact.contains("PM") {
+            compact += " AM"
+        }
+        return compact
     }
 
     // MARK: - Alert helpers

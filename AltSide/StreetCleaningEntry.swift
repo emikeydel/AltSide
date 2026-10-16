@@ -89,6 +89,19 @@ struct StreetCleaningEntry: Codable, Identifiable {
         return nil
     }
 
+    /// Like `nextCleaningDate`, but skips days when ASP is suspended (holidays).
+    func nextEffectiveCleaningDate(from date: Date = Date()) -> Date? {
+        let cal = Calendar.current
+        var cursor = date
+        for _ in 0..<10 {
+            guard let next = nextCleaningDate(from: cursor) else { return nil }
+            if !ASPSuspensionCalendar.isSuspended(on: next) { return next }
+            guard let dayAfter = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: next)) else { return nil }
+            cursor = dayAfter
+        }
+        return nil
+    }
+
     func isActiveRightNow(date: Date = Date()) -> Bool {
         guard let targetWeekday = weekdayInt else { return false }
         let cal = Calendar.current

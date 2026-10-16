@@ -4,6 +4,8 @@ import MapKit
 struct OutsideNYCView: View {
     /// Called with a valid NYC coordinate when the user picks a search result.
     let onLocationSelected: (CLLocationCoordinate2D, String) -> Void
+    /// Called when the user dismisses without selecting a location.
+    var onDismiss: (() -> Void)? = nil
 
     @State private var searchText = ""
     @State private var results: [MKMapItem] = []
@@ -23,6 +25,20 @@ struct OutsideNYCView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
+                    // Close button
+                    if onDismiss != nil {
+                        HStack {
+                            Spacer()
+                            Button(action: { onDismiss?() }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundStyle(Color.sweepyGray3)
+                            }
+                            .padding(.trailing, 24)
+                            .padding(.top, 20)
+                        }
+                    }
+
                     // SweepyFail illustration
                     Image("SweepyFail")
                         .resizable()
@@ -130,13 +146,18 @@ struct OutsideNYCView: View {
                 }
             }
         }
-        .onAppear { fieldFocused = true }
+        .onAppear {
+            // Delay focus slightly so the view finishes its entrance animation first
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                fieldFocused = true
+            }
+        }
     }
 
     // MARK: - Result row
 
     private func resultRow(_ item: MKMapItem) -> some View {
-        let coordinate = item.location.coordinate
+        let coordinate = item.placemark.coordinate
         let borough = CleaningDataManager.borough(for: coordinate)
         let inNYC = !borough.isEmpty
 
@@ -162,7 +183,7 @@ struct OutsideNYCView: View {
                     Text(item.name ?? "Unknown")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(inNYC ? Color.sweepyWhite : Color.sweepyGray3)
-                    if let addr = item.address?.shortAddress {
+                    if let addr = item.placemark.shortAddress {
                         Text(addr)
                             .font(.system(size: 12))
                             .foregroundStyle(Color.sweepyGray3)
@@ -203,8 +224,8 @@ struct OutsideNYCView: View {
             do {
                 let response = try await MKLocalSearch(request: request).start()
                 let sorted = response.mapItems.sorted { a, b in
-                    let aIn = !CleaningDataManager.borough(for: a.location.coordinate).isEmpty
-                    let bIn = !CleaningDataManager.borough(for: b.location.coordinate).isEmpty
+                    let aIn = !CleaningDataManager.borough(for: a.placemark.coordinate).isEmpty
+                    let bIn = !CleaningDataManager.borough(for: b.placemark.coordinate).isEmpty
                     return aIn && !bIn
                 }
                 results = Array(sorted.prefix(5))

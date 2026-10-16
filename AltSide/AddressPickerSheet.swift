@@ -135,7 +135,7 @@ struct AddressPickerSheet: View {
     }
 
     private func resultRow(_ item: MKMapItem) -> some View {
-        let coordinate = item.location.coordinate
+        let coordinate = item.placemark.coordinate
         let borough = CleaningDataManager.borough(for: coordinate)
         let inNYC = !borough.isEmpty
 
@@ -161,7 +161,7 @@ struct AddressPickerSheet: View {
                     Text(item.name ?? "Unknown")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(inNYC ? Color.sweepyWhite : Color.sweepyGray3)
-                    if let addr = item.address?.shortAddress {
+                    if let addr = item.placemark.shortAddress {
                         Text(addr)
                             .font(.system(size: 12))
                             .foregroundStyle(Color.sweepyGray3)
@@ -195,8 +195,8 @@ struct AddressPickerSheet: View {
             do {
                 let response = try await MKLocalSearch(request: request).start()
                 let sorted = response.mapItems.sorted { a, b in
-                    let aIn = !CleaningDataManager.borough(for: a.location.coordinate).isEmpty
-                    let bIn = !CleaningDataManager.borough(for: b.location.coordinate).isEmpty
+                    let aIn = !CleaningDataManager.borough(for: a.placemark.coordinate).isEmpty
+                    let bIn = !CleaningDataManager.borough(for: b.placemark.coordinate).isEmpty
                     return aIn && !bIn
                 }
                 results = Array(sorted.prefix(5))

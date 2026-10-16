@@ -8,11 +8,16 @@ struct SavedSpotView: View {
     let onClear: () -> Void
     let onNavigate: () -> Void
     @Environment(\.notificationManager) private var notificationManager
+    @Environment(\.cleaningDataManager) private var cleaningDataManager
+    @Environment(\.permits) private var permitManager
 
     @State private var showShare = false
     @State private var showParkAgainConfirm = false
     @State private var showWelcome = false
     @State private var showEditReminders = false
+    @State private var mapSegments: [BlockSegment] = []
+    /// Construction permits on the parked block, active now or starting soon.
+    @State private var blockPermits: [StreetPermit] = []
 
     private var accentColor: Color {
         spot.isCleaningSoon ? Color.sweepyAmber : Color.sweepyGreen
@@ -35,6 +40,10 @@ struct SavedSpotView: View {
                     countdownSection
 
                     // Reminders
+                    if !blockPermits.isEmpty {
+                        permitWarning
+                    }
+
                     remindersCard
 
                     // ASP updates
@@ -54,7 +63,7 @@ struct SavedSpotView: View {
                     Spacer().frame(height: 20)
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 20)
+                .padding(.top, SweepyNavBar.height + 8)
             }
         }
         .sheet(isPresented: $showShare) {
@@ -86,6 +95,62 @@ struct SavedSpotView: View {
         } message: {
             Text("This will clear your saved spot and cancel any street cleaning reminders.")
         }
+        .task(id: spot.id) {
+            mapSegments = await cleaningDataManager.loadNearbySegments(coordinate: spot.coordinate)
+            await loadPermits()
+        }
+    }
+
+    // MARK: - Construction permits
+
+    private func loadPermits() async {
+        let borough = CleaningDataManager.borough(for: spot.coordinate)
+        guard !borough.isEmpty else { return }
+        let streetName = BlockMatcher.normalize(spot.streetName)
+        let all = await cleaningDataManager.loadSchedule(
+            streetName: streetName, borough: borough, coordinate: spot.coordinate
+        )
+        let block = CleaningDataManager.blockSchedule(all, streetName: streetName, coordinate: spot.coordinate)
+        guard !block.streetName.isEmpty else { return }
+        let permits = await permitManager.permits(onStreets: [block.streetName], borough: borough)
+        blockPermits = StreetPermitManager.matching(permits, street: block.streetName, blockKeys: block.blockKeys)
+        await notificationManager.schedulePermitAlerts(for: spot, permits: blockPermits)
+    }
+
+    private var permitWarning: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "cone.fill")
+                    .foregroundStyle(Color.sweepyAmber)
+                Text("CONSTRUCTION ON YOUR BLOCK")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.5)
+                    .foregroundStyle(Color.sweepyAmber)
+            }
+            ForEach(blockPermits) { permit in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(permit.startsLater
+                         ? "Starts " + permit.start.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+                         : "Active until " + permit.end.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                        .font(.system(size: 16, weight: .black))
+                        .tracking(-0.4)
+                        .foregroundStyle(Color.sweepyWhite)
+                    Text(permit.kinds.joined(separator: " · "))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.sweepyGray2)
+                    Text(permit.permittee.split(separator: " ").map { $0.capitalized }.joined(separator: " "))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sweepyGray3)
+                }
+            }
+            Text("Permits don't say which side or which days. Look for posted No Parking signs near your car.")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.sweepyGray2)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.sweepyAmberDim)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Mini Map
@@ -111,6 +176,11 @@ struct SavedSpotView: View {
                         .foregroundStyle(.white)
                 }
                 .shadow(color: Color.sweepyRed.opacity(0.5), radius: 6)
+            }
+            ForEach(mapSegments) { segment in
+                MapPolyline(coordinates: [segment.fromCoord, segment.toCoord])
+                    .stroke(segment.isSoon ? Color.sweepyAmber : Color.sweepyGreen,
+                            style: StrokeStyle(lineWidth: 5, lineCap: .round))
             }
         }
         .mapStyle(.standard)
@@ -145,11 +215,10 @@ struct SavedSpotView: View {
 
                 Spacer()
 
-                // Navigate + Share + Info icons
+                // Navigate + Share icons (Home and Help live in SweepyNavBar)
                 HStack(spacing: 8) {
                     iconButton(systemName: "arrow.triangle.turn.up.right.circle.fill", action: onNavigate)
                     iconButton(systemName: "square.and.arrow.up", action: { showShare = true })
-                    iconButton(systemName: "questionmark", action: { showWelcome = true })
                 }
             }
 
